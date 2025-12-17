@@ -5,7 +5,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, FileText } from 'lucide-react';
 
 // Imports
-import { firebaseConfig, COLLECTION_NAME, ORIGINAL_DOC_URL, CATEGORIES } from './config';
+import { firebaseConfig, COLLECTION_NAME, ORIGINAL_DOC_URL, CATEGORIES } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers';
 import StatusBadge from './components/StatusBadge';
 import SettingsModal from './components/SettingsModal';

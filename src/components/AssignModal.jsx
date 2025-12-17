@@ -1,4 +1,3 @@
-import React from 'react';
 import { Search } from 'lucide-react';
 
 const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStatus }) => {

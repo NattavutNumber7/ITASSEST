@@ -33,6 +33,7 @@ export const generateHandoverHtml = (asset) => {
 
   const receiverName = asset.assignedTo || '.......................................................................';
 
+  // 🔴 แก้ไขตรงนี้: ใช้ชื่อไฟล์ .png และใส่ / นำหน้า
   return `
     <html>
       <head>
@@ -81,7 +82,7 @@ export const generateHandoverHtml = (asset) => {
         </style>
       </head>
       <body>
-          <img src="FRESHKET LOGO-01.jpg" style="position: absolute; top: 20px; left: 20px; width: 100px; height: auto;" />
+          <img src="/FRESHKET LOGO-01.png" style="position: absolute; top: 20px; left: 20px; width: 100px; height: auto;" />
           <div class="header">แบบบันทึกรับ – คืนทรัพย์สินบริษัท</div>
           <div class="date-line">วันที่ ${day} เดือน ${month} พ.ศ. ${year}</div>
           
