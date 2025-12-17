@@ -1,5 +1,5 @@
 import { Pencil } from 'lucide-react';
-import { STATUSES } from '../config';
+import { STATUSES } from '../config.jsx';
 
 const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
   if (!show || !data) return null;

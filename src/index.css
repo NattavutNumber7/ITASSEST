@@ -1,3 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+body {
+  background-color: #f8fafc; /* พื้นหลังสีเทาอ่อน สบายตา */
+}

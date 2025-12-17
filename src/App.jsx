@@ -4,14 +4,13 @@ import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, FileText } from 'lucide-react';
 
-// Imports
+// ✅ แก้ไข: เติม .jsx และ .js ต่อท้ายชื่อไฟล์ให้ครบ
 import { firebaseConfig, COLLECTION_NAME, ORIGINAL_DOC_URL, CATEGORIES } from './config.jsx';
-import { parseCSV, generateHandoverHtml } from './utils/helpers';
-import StatusBadge from './components/StatusBadge';
-import SettingsModal from './components/SettingsModal';
-import AssignModal from './components/AssignModal';
-import EditModal from './components/EditModal';
-import "tailwindcss";
+import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
+import StatusBadge from './components/StatusBadge.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
+import AssignModal from './components/AssignModal.jsx';
+import EditModal from './components/EditModal.jsx';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -148,7 +147,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg text-white"><Box size={24} /></div>
-            <div><h1 className="text-xl font-bold">IT Asset management</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
+            <div><h1 className="text-xl font-bold">IT Asset Manager</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"><Settings size={20} /></button>

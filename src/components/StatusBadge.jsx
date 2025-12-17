@@ -1,5 +1,5 @@
 import React from 'react';
-import { STATUSES } from '../config';
+import { STATUSES } from '../config.jsx';
 
 const StatusBadge = ({ status }) => {
   const config = STATUSES[status.toUpperCase()] || STATUSES.AVAILABLE;
