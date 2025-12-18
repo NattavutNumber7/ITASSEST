@@ -8,12 +8,18 @@ export const parseCSV = (text) => {
     const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
     const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
 
+    // ✅ แก้ไข: สลับคอลัมน์ให้ถูกต้องตามข้อมูลจริง
+    // Col 0: ID
+    // Col 1: Name
+    // Col 2: Nickname
+    // Col 3: Department (แผนก)
+    // Col 4: Position (ตำแหน่ง)
     return {
       id: cleanCol(cols[0]),
       name: cleanCol(cols[1]),
       nickname: cleanCol(cols[2]),
-      position: cleanCol(cols[3]),
-      department: cleanCol(cols[4]),
+      department: cleanCol(cols[3]), // สลับเอาแผนกมาไว้ตรงนี้
+      position: cleanCol(cols[4]),   // สลับเอาตำแหน่งมาไว้ตรงนี้
       email: cleanCol(cols[5]),
       status: cleanCol(cols[6]) || 'Active'
     };
@@ -47,17 +53,16 @@ export const generateHandoverHtml = (asset) => {
           .indent { text-indent: 40px; }
           .bold { font-weight: bold; }
           
-          /* Updated Signatures Layout - Moved to Right */
           .signatures { 
             margin-top: 40px; 
             width: 100%;
             display: flex;
             flex-direction: column;
-            align-items: flex-end; /* Align flex items to the right */
-            padding-right: 50px; /* Add slight padding from the edge */
+            align-items: flex-end;
+            padding-right: 50px;
           }
           .sign-box { 
-            width: 400px; /* Define width for the signature block */
+            width: 400px;
             text-align: left;
             margin-bottom: 30px;
           }

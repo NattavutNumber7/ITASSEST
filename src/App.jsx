@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, FileText } from 'lucide-react';
+// ✅ แก้ไข: เพิ่ม ArrowRight กลับมา
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, FileText, ArrowRight } from 'lucide-react';
 
 // Imports
 import { firebaseConfig, COLLECTION_NAME, ORIGINAL_DOC_URL, CATEGORIES } from './config.jsx';
-import { parseCSV, parseAssetCSV, generateHandoverHtml } from './utils/helpers.js';
+import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
@@ -28,7 +29,6 @@ export default function App() {
   const [notification, setNotification] = useState(null);
 
   const [sheetUrl, setSheetUrl] = useState('');
-  const [assetSheetUrl, setAssetSheetUrl] = useState('');
   const [employees, setEmployees] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -41,14 +41,8 @@ export default function App() {
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
     const unsubscribe = onAuthStateChanged(auth, setUser);
-    
-    // Load saved URLs
-    const savedSheetUrl = localStorage.getItem('it_asset_sheet_url');
-    if (savedSheetUrl) { setSheetUrl(savedSheetUrl); fetchEmployeesFromSheet(savedSheetUrl); }
-    
-    const savedAssetUrl = localStorage.getItem('it_asset_data_url');
-    if (savedAssetUrl) { setAssetSheetUrl(savedAssetUrl); }
-
+    const savedUrl = localStorage.getItem('it_asset_sheet_url');
+    if (savedUrl) { setSheetUrl(savedUrl); fetchEmployeesFromSheet(savedUrl); }
     return () => unsubscribe();
   }, []);
 
@@ -73,13 +67,9 @@ export default function App() {
       const res = await fetch(url);
       if (!res.ok) throw new Error();
       setEmployees(parseCSV(await res.text()));
-      if (view !== 'list') showNotification(`Synced Employees!`);
+      if (view !== 'list') showNotification(`Synced!`);
     } catch (e) { showNotification('Sync Failed', 'error'); } 
     finally { setIsSyncing(false); }
-  };
-  
-  const handleImportAssets = async () => {
-    // (ส่วนนี้ปิดไว้ตามคำขอ)
   };
 
   const lookupEmployee = (id) => {
@@ -106,14 +96,12 @@ export default function App() {
     if (assignModal.empStatus.includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
     try {
       const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName;
-      
-      // ✅ บันทึกตำแหน่ง (position) ลง Database ด้วย
       await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), {
         status: 'assigned', 
         assignedTo: fullName, 
         employeeId: assignModal.empId, 
         department: assignModal.empDept, 
-        position: assignModal.empPosition, // เพิ่มบรรทัดนี้
+        position: assignModal.empPosition, // บันทึกตำแหน่ง
         assignedDate: new Date().toISOString()
       });
       setAssignModal({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
@@ -129,7 +117,7 @@ export default function App() {
         updateData.assignedTo = null; 
         updateData.employeeId = null; 
         updateData.department = null; 
-        updateData.position = null; // เคลียร์ตำแหน่ง
+        updateData.position = null; 
         updateData.assignedDate = null;
       }
       await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData);
@@ -147,7 +135,7 @@ export default function App() {
         assignedTo: null, 
         employeeId: null, 
         department: null, 
-        position: null, // เคลียร์ตำแหน่ง
+        position: null,
         assignedDate: null,
         notes: asset.notes ? `${asset.notes} | คืน: ${condition}` : `คืน: ${condition}`
       });
@@ -213,8 +201,7 @@ export default function App() {
                         <th className="px-6 py-4">ทรัพย์สิน</th>
                         <th className="px-6 py-4">สถานะ</th>
                         <th className="px-6 py-4">ผู้ถือครอง</th>
-                        {/* ✅ เพิ่มหัวตาราง "ตำแหน่ง" */}
-                        <th className="px-6 py-4">ตำแหน่ง</th>
+                        <th className="px-6 py-4">ตำแหน่ง</th> 
                         <th className="px-6 py-4">แผนก</th>
                         <th className="px-6 py-4 text-right">จัดการ</th>
                       </tr>
@@ -234,10 +221,12 @@ export default function App() {
                           <td className="px-6 py-4"><StatusBadge status={asset.status} /></td>
                           <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1"><User size={14} className="text-blue-500"/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
                           
-                          {/* ✅ แสดงข้อมูล ตำแหน่ง */}
+                          {/* แสดงข้อมูลตำแหน่ง */}
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.position}>{asset.position || '-'}</td>
                           
+                          {/* แสดงข้อมูลแผนก */}
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.department}>{asset.department || '-'}</td>
+                          
                           <td className="px-6 py-4 text-right">
                              <div className="flex justify-end gap-2">
                               {asset.status === 'available' && <button onClick={() => setAssignModal({open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: ''})} className="flex gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"><ArrowRight size={14}/> เบิก</button>}
@@ -283,17 +272,7 @@ export default function App() {
       </div>
 
       {/* --- MODALS --- */}
-      <SettingsModal 
-        show={showSettings} 
-        onClose={() => setShowSettings(false)} 
-        sheetUrl={sheetUrl} 
-        setSheetUrl={setSheetUrl}
-        assetSheetUrl={assetSheetUrl} 
-        setAssetSheetUrl={setAssetSheetUrl} 
-        onSave={() => {handleSaveSettings(); fetchEmployeesFromSheet(sheetUrl); setShowSettings(false)}} 
-        onImportAssets={handleImportAssets} 
-        isSyncing={isSyncing} 
-      />
+      <SettingsModal show={showSettings} onClose={() => setShowSettings(false)} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} onSave={() => {handleSaveSettings(); fetchEmployeesFromSheet(sheetUrl); setShowSettings(false)}} isSyncing={isSyncing} />
       <AssignModal show={assignModal.open} onClose={() => setAssignModal({ ...assignModal, open: false })} onSubmit={handleAssignSubmit} data={assignModal} setData={setAssignModal} onLookup={lookupEmployee} empStatus={assignModal.empStatus} />
       <EditModal show={editModal.open} onClose={() => setEditModal({ open: false, asset: null })} onSubmit={handleEditSubmit} data={editModal.asset} setData={(val) => setEditModal({ ...editModal, asset: val })} />
     </div>
