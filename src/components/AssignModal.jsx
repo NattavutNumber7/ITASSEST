@@ -1,3 +1,4 @@
+import React from 'react';
 import { Search } from 'lucide-react';
 
 const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStatus }) => {
@@ -55,17 +56,27 @@ const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStat
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase">ตำแหน่ง</label>
-                <input type="text" className="w-full bg-transparent border-b border-slate-300 py-1 text-sm text-slate-700 outline-none" value={data.empPosition} readOnly />
+                <input 
+                    type="text" 
+                    className="w-full bg-transparent border-b border-slate-300 py-1 text-sm text-slate-700 outline-none" 
+                    value={data.empPosition || ''} // ✅ แสดงตำแหน่ง
+                    readOnly 
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase">แผนก</label>
-                <input type="text" className="w-full bg-transparent border-b border-slate-300 py-1 text-sm text-slate-700 outline-none" value={data.empDept} readOnly />
+                <input 
+                    type="text" 
+                    className="w-full bg-transparent border-b border-slate-300 py-1 text-sm text-slate-700 outline-none" 
+                    value={data.empDept || ''} 
+                    readOnly 
+                />
               </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase">สถานะพนักงาน</label>
               <div className={`mt-1 inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                empStatus.toLowerCase() === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                empStatus?.toLowerCase() === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
               }`}>
                 {empStatus || '-'}
               </div>
