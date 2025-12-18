@@ -1,4 +1,4 @@
-// ฟังก์ชันแปลง CSV เป็น JSON Object
+// ฟังก์ชันแปลง CSV พนักงาน (Employee)
 export const parseCSV = (text) => {
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
@@ -33,7 +33,6 @@ export const generateHandoverHtml = (asset) => {
 
   const receiverName = asset.assignedTo || '.......................................................................';
 
-  // 🔴 แก้ไขตรงนี้: ใช้ชื่อไฟล์ .png และใส่ / นำหน้า
   return `
     <html>
       <head>
