@@ -13,15 +13,16 @@ export const firebaseConfig = {
 };
 
 export const COLLECTION_NAME = 'it_assets';
+export const LOGS_COLLECTION_NAME = 'asset_logs';
 
 // ✅ ดึง URL เอกสารจาก .env
 export const ORIGINAL_DOC_URL = import.meta.env.VITE_ORIGINAL_DOC_URL || "#";
 
 // ✅ ดึงข้อมูลบริษัทและผู้ลงนามจาก .env
 export const COMPANY_INFO = {
-  companyName: import.meta.env.VITE_COMPANY_NAME ,
-  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME ,
-  witnessName: import.meta.env.VITE_WITNESS_NAME 
+  companyName: import.meta.env.VITE_COMPANY_NAME || "บริษัท โพลาร์ แบร์ มิชชั่น จำกัด",
+  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME || "นายชัยวัฒน์ อมรรุ่งศิริ",
+  witnessName: import.meta.env.VITE_WITNESS_NAME || "นายณัฐวุฒิ ลามันจิตร์"
 };
 
 // ✅ Logo Configuration
@@ -51,6 +52,7 @@ export const CATEGORIES = [
 export const STATUSES = {
   AVAILABLE: { id: 'available', label: 'ว่าง (พร้อมใช้)', color: 'bg-[#008065]/10 text-[#008065] border-[#008065]/30' },
   ASSIGNED: { id: 'assigned', label: 'ใช้งานอยู่', color: 'bg-[#007c7c]/10 text-[#007c7c] border-[#007c7c]/30' },
-  BROKEN: { id: 'broken', label: 'เสียหาย', color: 'bg-red-50 text-red-700 border-red-200' },
+  // ✅ แก้ไขจาก "เสียหาย" เป็น "ชำรุด" ให้ตรงกับหน้า Modal
+  BROKEN: { id: 'broken', label: 'ชำรุด', color: 'bg-red-50 text-red-700 border-red-200' },
   REPAIR: { id: 'repair', label: 'ส่งซ่อม', color: 'bg-[#ff6600]/10 text-[#ff6600] border-[#ff6600]/30' },
 };

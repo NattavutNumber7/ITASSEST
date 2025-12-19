@@ -2,16 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut, History, FileClock } from 'lucide-react'; // เพิ่ม FileClock icon
 
 // Imports
-import { firebaseConfig, COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
+import { firebaseConfig, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
 import EditModal from './components/EditModal.jsx';
 import Login from './components/Login.jsx';
+import HistoryModal from './components/HistoryModal.jsx';
+import ReturnModal from './components/ReturnModal.jsx'; 
+import DeleteModal from './components/DeleteModal.jsx';
+import DeletedLogModal from './components/DeletedLogModal.jsx'; // ✅ Import Modal ประวัติการลบ
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -41,6 +45,10 @@ export default function App() {
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
   const [newAsset, setNewAsset] = useState({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
+  const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
+  const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
+  const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
+  const [showDeletedLog, setShowDeletedLog] = useState(false); // ✅ State สำหรับ DeletedLogModal
 
   // --- Effects ---
   useEffect(() => {
@@ -124,11 +132,29 @@ export default function App() {
     }
   };
 
+  const logActivity = async (action, assetData, details = '') => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, LOGS_COLLECTION_NAME), {
+        assetId: assetData.id,
+        assetName: assetData.name,
+        serialNumber: assetData.serialNumber,
+        action: action, 
+        details: details,
+        performedBy: user.email,
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error logging activity:", error);
+    }
+  };
+
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!user) return;
     try {
-      await addDoc(collection(db, COLLECTION_NAME), { ...newAsset, status: 'available', assignedTo: null, assignedDate: null, createdAt: serverTimestamp() });
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), { ...newAsset, status: 'available', assignedTo: null, assignedDate: null, createdAt: serverTimestamp() });
+      await logActivity('CREATE', { id: docRef.id, ...newAsset }, 'เพิ่มทรัพย์สินเข้าระบบ');
       setNewAsset({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
       setView('list'); showNotification('เพิ่มสำเร็จ');
     } catch { showNotification('Failed', 'error'); }
@@ -144,9 +170,12 @@ export default function App() {
         assignedTo: fullName, 
         employeeId: assignModal.empId, 
         department: assignModal.empDept, 
-        position: assignModal.empPosition, // บันทึกตำแหน่ง
+        position: assignModal.empPosition, 
         assignedDate: new Date().toISOString()
       });
+
+      await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `เบิกให้: ${fullName} (${assignModal.empDept})`);
+
       setAssignModal({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
       showNotification('บันทึกสำเร็จ');
     } catch { showNotification('Failed', 'error'); }
@@ -164,26 +193,80 @@ export default function App() {
         updateData.assignedDate = null;
       }
       await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData);
+      await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`);
       setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ');
     } catch { showNotification('Failed', 'error'); }
   };
 
-  const handleReturn = async (asset) => {
-    const condition = prompt("สภาพเครื่อง:", "ปกติ");
-    if (condition === null) return;
-    if (!confirm('ยืนยันรับคืน?')) return;
+  const handleReturnSubmit = async (fullConditionString, conditionStatus) => {
+    const { asset, type } = returnModal;
+    if (!asset) return;
+
+    let newStatus = 'available';
+    if (conditionStatus === 'ชำรุด' || conditionStatus === 'สูญหาย') {
+      newStatus = 'broken';
+    } else if (conditionStatus === 'ส่งซ่อม') {
+      newStatus = 'repair';
+    }
+
     try {
-      await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
-        status: 'available', 
-        assignedTo: null, 
-        employeeId: null, 
-        department: null, 
-        position: null,
-        assignedDate: null,
-        notes: asset.notes ? `${asset.notes} | คืน: ${condition}` : `คืน: ${condition}`
-      });
-      showNotification('รับคืนสำเร็จ');
-    } catch { showNotification('Failed', 'error'); }
+        if (type === 'RETURN') {
+            await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
+                status: newStatus,
+                assignedTo: null, 
+                employeeId: null, 
+                department: null, 
+                position: null,
+                assignedDate: null,
+                notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}`
+            });
+            await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`);
+            showNotification('รับคืนสำเร็จ');
+        } else if (type === 'CHANGE_OWNER') {
+            await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`);
+            
+            if (newStatus !== 'available') {
+               alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`);
+            }
+            openAssignModal(asset);
+        }
+    } catch (error) {
+        console.error(error);
+        showNotification('Failed', 'error');
+    } finally {
+        setReturnModal({ open: false, asset: null, type: 'RETURN' });
+    }
+  };
+
+  const handleDeleteSubmit = async (reason) => {
+    const asset = deleteModal.asset;
+    if (!asset) return;
+
+    try {
+      await deleteDoc(doc(db, COLLECTION_NAME, asset.id)); 
+      await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`);
+      showNotification('ลบรายการสำเร็จ');
+    } catch (error) {
+      console.error(error);
+      showNotification('เกิดข้อผิดพลาดในการลบ', 'error');
+    } finally {
+      setDeleteModal({ open: false, asset: null });
+    }
+  };
+
+  const onReturnClick = (asset) => {
+    setReturnModal({ open: true, asset, type: 'RETURN' });
+    setOpenDropdownId(null);
+  };
+
+  const onChangeOwnerClick = (asset) => {
+    setReturnModal({ open: true, asset, type: 'CHANGE_OWNER' });
+    setOpenDropdownId(null);
+  };
+
+  const onDeleteClick = (asset) => {
+    setDeleteModal({ open: true, asset });
+    setOpenDropdownId(null);
   };
 
   const handlePrintHandover = (asset) => {
@@ -193,7 +276,6 @@ export default function App() {
     setTimeout(() => printWindow.print(), 1000);
   };
 
-  // Helper to open modal for assigning/changing owner
   const openAssignModal = (asset) => {
     setAssignModal({
         open: true, 
@@ -231,7 +313,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans text-slate-900 pb-20" style={{backgroundColor: COLORS.background}}>
-      {/* --- Navbar --- */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -254,7 +335,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- Toolbar --- */}
       <div className="bg-white border-b border-slate-200 py-3 mb-6">
          <div className="max-w-6xl mx-auto px-4 flex justify-between items-center">
             <div className="flex gap-4 items-center">
@@ -262,7 +342,17 @@ export default function App() {
                {view === 'add' && <span className="text-slate-300">/</span>}
                {view === 'add' && <span className="text-sm font-medium" style={{color: COLORS.primary}}>เพิ่มรายการใหม่</span>}
             </div>
-            <div>
+            <div className="flex gap-2">
+                {/* ✅ ปุ่มดูประวัติการลบ (แสดงเฉพาะ View List) */}
+                {view === 'list' && (
+                  <button 
+                    onClick={() => setShowDeletedLog(true)} 
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium transition-colors"
+                  >
+                    <Trash2 size={16} className="text-red-500" /> ประวัติการลบ
+                  </button>
+                )}
+
                 {view === 'list' ? (
                     <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 text-sm font-medium transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>
                         <Plus size={18} /> เพิ่มทรัพย์สิน
@@ -340,7 +430,6 @@ export default function App() {
                           
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.department}>{asset.department || '-'}</td>
                           
-                          {/* --- Action Column with Dropdown --- */}
                           <td className="px-6 py-4 text-right relative">
                              <button 
                                 onClick={(e) => {
@@ -353,7 +442,6 @@ export default function App() {
                                 <MoreVertical size={20} />
                              </button>
 
-                             {/* Dropdown Menu */}
                              {openDropdownId === asset.id && (
                                  <div 
                                     ref={dropdownRef}
@@ -361,7 +449,15 @@ export default function App() {
                                     style={{ marginRight: '1.5rem', marginTop: '-10px' }} 
                                  >
                                     <div className="py-1">
-                                        {/* Status: Available */}
+                                        <button 
+                                            onClick={() => { setHistoryModal({ open: true, asset: asset }); setOpenDropdownId(null); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                        >
+                                            <History size={16} className="text-blue-600"/> ประวัติการใช้งาน
+                                        </button>
+                                        
+                                        <div className="border-t border-slate-100 my-1"></div>
+
                                         {asset.status === 'available' && (
                                             <button 
                                                 onClick={() => openAssignModal(asset)}
@@ -371,11 +467,10 @@ export default function App() {
                                             </button>
                                         )}
 
-                                        {/* Status: Assigned */}
                                         {asset.status === 'assigned' && (
                                             <>
                                                 <button 
-                                                    onClick={() => openAssignModal(asset)}
+                                                    onClick={() => onChangeOwnerClick(asset)} 
                                                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                                 >
                                                     <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง
@@ -387,7 +482,7 @@ export default function App() {
                                                     <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ
                                                 </button>
                                                 <button 
-                                                    onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
+                                                    onClick={() => onReturnClick(asset)} 
                                                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                                 >
                                                     <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์
@@ -395,10 +490,9 @@ export default function App() {
                                             </>
                                         )}
 
-                                        {/* Common Actions */}
                                         {(['broken','repair'].includes(asset.status)) && (
                                             <button 
-                                                onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
+                                                onClick={() => onReturnClick(asset)} 
                                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                             >
                                                 <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์
@@ -415,10 +509,7 @@ export default function App() {
                                         <div className="border-t border-slate-100 my-1"></div>
                                         
                                         <button 
-                                            onClick={() => { 
-                                                if(confirm('ลบรายการนี้?')) { deleteDoc(doc(db, COLLECTION_NAME, asset.id)); }
-                                                setOpenDropdownId(null); 
-                                            }}
+                                            onClick={() => onDeleteClick(asset)}
                                             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                         >
                                             <Trash2 size={16}/> ลบรายการ
@@ -457,10 +548,28 @@ export default function App() {
         )}
       </div>
 
-      {/* --- MODALS --- */}
       <SettingsModal show={showSettings} onClose={() => setShowSettings(false)} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} onSave={() => {handleSaveSettings(); fetchEmployeesFromSheet(sheetUrl); setShowSettings(false)}} isSyncing={isSyncing} />
       <AssignModal show={assignModal.open} onClose={() => setAssignModal({ ...assignModal, open: false })} onSubmit={handleAssignSubmit} data={assignModal} setData={setAssignModal} onLookup={lookupEmployee} empStatus={assignModal.empStatus} />
       <EditModal show={editModal.open} onClose={() => setEditModal({ open: false, asset: null })} onSubmit={handleEditSubmit} data={editModal.asset} setData={(val) => setEditModal({ ...editModal, asset: val })} />
+      <HistoryModal show={historyModal.open} onClose={() => setHistoryModal({ open: false, asset: null })} asset={historyModal.asset} db={db} />
+      <ReturnModal 
+        show={returnModal.open} 
+        onClose={() => setReturnModal({ ...returnModal, open: false })} 
+        onSubmit={handleReturnSubmit}
+        data={returnModal}
+      />
+      <DeleteModal 
+        show={deleteModal.open} 
+        onClose={() => setDeleteModal({ open: false, asset: null })} 
+        onSubmit={handleDeleteSubmit}
+        asset={deleteModal.asset}
+      />
+      {/* ✅ เรียกใช้ DeletedLogModal */}
+      <DeletedLogModal 
+        show={showDeletedLog} 
+        onClose={() => setShowDeletedLog(false)} 
+        db={db} 
+      />
     </div>
   );
 }
