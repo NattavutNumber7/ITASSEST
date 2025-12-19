@@ -1,39 +1,28 @@
 import React, { useState } from 'react';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithPopup } from 'firebase/auth'; 
 import { Loader2 } from 'lucide-react';
-import { COLORS, LOGO_URL } from '../config.jsx';
+import { COLORS, LOGO_URL, auth, googleProvider } from '../config.jsx'; // นำเข้า auth และ provider จาก config
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const auth = getAuth();
-  const provider = new GoogleAuthProvider();
 
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      if (!user.email.endsWith('@freshket.co')) {
-
-        alert('❌ ไม่สามารถเข้าสู่ระบบได้\n\nระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
-
-        await auth.signOut();
-        
-        setError('อนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
-      } else {
-        // Logged in
-      }
+      // ใช้ signInWithPopup แบบเดิมที่ง่ายและเสถียรกว่าในหลายๆ environment
+      await signInWithPopup(auth, googleProvider);
+      
+      // ไม่ต้องทำอะไรต่อที่นี่ เพราะ App.jsx มี onAuthStateChanged คอยดักฟังอยู่แล้ว
+      // เมื่อ Login สำเร็จ App.jsx จะเปลี่ยนหน้าให้เองอัตโนมัติ
     } catch (err) {
       console.error("Login Error:", err);
       let msg = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ";
       if (err.code === 'auth/popup-closed-by-user') msg = "คุณปิดหน้าต่างล็อกอินก่อนทำรายการสำเร็จ";
+      if (err.code === 'auth/cancelled-popup-request') msg = "มีการเปิดหน้าต่างล็อกอินซ้อนกัน";
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };

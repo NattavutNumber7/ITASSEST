@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut, History, FileClock } from 'lucide-react'; // เพิ่ม FileClock icon
+// นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/firestore
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore'; 
+// นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
+import { onAuthStateChanged, signOut } from 'firebase/auth'; 
+// ไอคอนจาก lucide-react
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut, History, FileClock } from 'lucide-react';
 
-// Imports
-import { firebaseConfig, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
+// นำเข้า Config และ Components
+// สังเกตว่าเรานำเข้า auth และ db มาจาก config.jsx โดยตรง
+import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
@@ -15,62 +18,81 @@ import Login from './components/Login.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import ReturnModal from './components/ReturnModal.jsx'; 
 import DeleteModal from './components/DeleteModal.jsx';
-import DeletedLogModal from './components/DeletedLogModal.jsx'; // ✅ Import Modal ประวัติการลบ
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+import DeletedLogModal from './components/DeletedLogModal.jsx';
 
 export default function App() {
-  // --- States ---
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [assets, setAssets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('list'); 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [notification, setNotification] = useState(null);
+  // --- สถานะ (States) ---
+  const [user, setUser] = useState(null); // เก็บข้อมูลผู้ใช้ที่ล็อกอิน
+  const [authLoading, setAuthLoading] = useState(true); // สถานะการโหลดข้อมูลยืนยันตัวตน
+  const [assets, setAssets] = useState([]); // รายการทรัพย์สินทั้งหมด
+  const [loading, setLoading] = useState(true); // สถานะการโหลดข้อมูลทรัพย์สิน
+  const [view, setView] = useState('list'); // มุมมองปัจจุบัน ('list' หรือ 'add')
+  const [searchTerm, setSearchTerm] = useState(''); // คำค้นหา
+  const [filterCategory, setFilterCategory] = useState('all'); // หมวดหมู่ที่เลือกกรอง
+  const [notification, setNotification] = useState(null); // ข้อความแจ้งเตือน
 
+  // สถานะอื่นๆ (Settings, Import CSV, Dropdown)
   const [sheetUrl, setSheetUrl] = useState('');
   const [employees, setEmployees] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-
-  // Dropdown state
-  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const [openDropdownId, setOpenDropdownId] = useState(null); // ID ของรายการที่เปิด Dropdown อยู่
   const dropdownRef = useRef(null);
 
+  // สถานะสำหรับ Modals ต่างๆ
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
   const [newAsset, setNewAsset] = useState({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
-  const [showDeletedLog, setShowDeletedLog] = useState(false); // ✅ State สำหรับ DeletedLogModal
+  const [showDeletedLog, setShowDeletedLog] = useState(false); 
 
-  // --- Effects ---
+  // --- Effects (การทำงานข้างเคียง) ---
+
+  // 1. ตรวจสอบสถานะการล็อกอิน (Auth State Listener)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
+    // ฟังก์ชันนี้จะทำงานทุกครั้งที่สถานะการล็อกอินเปลี่ยน (เช่น ล็อกอินสำเร็จ, ล็อกเอาท์)
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setAuthLoading(true);
+      if (currentUser) {
+        // ถ้ามีผู้ใช้ล็อกอินเข้ามา ให้ตรวจสอบอีเมล
+        if (!currentUser.email.endsWith('@freshket.co')) {
+           // ถ้าอีเมลไม่ใช่ @freshket.co ให้บังคับล็อกเอาท์ทันที
+          await signOut(auth);
+          setUser(null);
+          alert('❌ เข้าสู่ระบบล้มเหลว\n\nระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
+        } else {
+          // ถ้าอีเมลถูกต้อง ให้เก็บข้อมูลผู้ใช้ลง State
+          setUser(currentUser);
+        }
+      } else {
+        // ถ้าไม่มีผู้ใช้ (ไม่ได้ล็อกอิน)
+        setUser(null);
+      }
+      setAuthLoading(false); // ปิดสถานะการโหลด
     });
 
+    // ดึง URL ของ Google Sheet ที่บันทึกไว้ (ถ้ามี)
     const savedUrl = localStorage.getItem('it_asset_sheet_url');
     if (savedUrl) { setSheetUrl(savedUrl); fetchEmployeesFromSheet(savedUrl); }
     
+    // คืนค่าฟังก์ชัน unsubscribe เพื่อยกเลิกการฟังเมื่อ Component ถูกทำลาย
     return () => unsubscribe();
   }, []);
 
+  // 2. ดึงข้อมูลทรัพย์สินจาก Firestore (Real-time Listener)
   useEffect(() => {
+    // ถ้ายังไม่ล็อกอิน ไม่ต้องดึงข้อมูล
     if (!user) {
       setAssets([]);
       return;
     }
     
+    // สร้าง Listener เพื่อดึงข้อมูลแบบ Real-time
     const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // เรียงลำดับตามวันที่สร้างล่าสุดก่อน
       items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setAssets(items);
       setLoading(false);
@@ -81,8 +103,9 @@ export default function App() {
     });
 
     return () => unsubscribeSnapshot();
-  }, [user]);
+  }, [user]); // ทำงานใหม่เมื่อ user เปลี่ยนแปลง
 
+  // 3. ปิด Dropdown เมื่อคลิกที่อื่น
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -95,7 +118,8 @@ export default function App() {
     };
   }, []);
 
-  // --- Functions ---
+  // --- ฟังก์ชันการทำงานต่างๆ (Handlers) ---
+
   const handleSaveSettings = () => {
     localStorage.setItem('it_asset_sheet_url', sheetUrl);
     showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว');
@@ -132,6 +156,7 @@ export default function App() {
     }
   };
 
+  // ✅ ฟังก์ชันบันทึก Log กิจกรรม
   const logActivity = async (action, assetData, details = '') => {
     if (!user) return;
     try {
@@ -296,21 +321,26 @@ export default function App() {
     return match && (filterCategory === 'all' || a.category === filterCategory);
   });
 
+  // --- Render (แสดงผล) ---
+
+  // 1. ถ้ากำลังโหลดสถานะ Auth ให้แสดง Loading Spinner
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}>
         <div className="flex flex-col items-center gap-2">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div>
-          <span className="text-sm font-medium">Loading...</span>
+          <span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span>
         </div>
       </div>
     );
   }
 
+  // 2. ถ้ายังไม่ได้ล็อกอิน ให้แสดงหน้า Login
   if (!user) {
     return <Login />;
   }
 
+  // 3. ถ้าล็อกอินแล้ว แสดงหน้าหลัก (Dashboard)
   return (
     <div className="min-h-screen font-sans text-slate-900 pb-20" style={{backgroundColor: COLORS.background}}>
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
@@ -343,7 +373,6 @@ export default function App() {
                {view === 'add' && <span className="text-sm font-medium" style={{color: COLORS.primary}}>เพิ่มรายการใหม่</span>}
             </div>
             <div className="flex gap-2">
-                {/* ✅ ปุ่มดูประวัติการลบ (แสดงเฉพาะ View List) */}
                 {view === 'list' && (
                   <button 
                     onClick={() => setShowDeletedLog(true)} 
@@ -367,7 +396,6 @@ export default function App() {
       <div className="max-w-6xl mx-auto px-4">
         {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white`} style={{backgroundColor: notification.type === 'error' ? COLORS.error : COLORS.primary}}>{notification.message}</div>}
 
-        {/* --- LIST VIEW --- */}
         {view === 'list' && (
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -528,7 +556,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- ADD VIEW --- */}
         {view === 'add' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
              <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
@@ -564,7 +591,6 @@ export default function App() {
         onSubmit={handleDeleteSubmit}
         asset={deleteModal.asset}
       />
-      {/* ✅ เรียกใช้ DeletedLogModal */}
       <DeletedLogModal 
         show={showDeletedLog} 
         onClose={() => setShowDeletedLog(false)} 
