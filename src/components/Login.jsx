@@ -19,7 +19,11 @@ const Login = () => {
       const user = result.user;
 
       if (!user.email.endsWith('@freshket.co')) {
+
+        alert('❌ ไม่สามารถเข้าสู่ระบบได้\n\nระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
+
         await auth.signOut();
+        
         setError('อนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
       } else {
         // Logged in
