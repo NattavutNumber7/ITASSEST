@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-// ✅ แก้ไข: เพิ่ม ArrowRight กลับมา
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, FileText, ArrowRight } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save } from 'lucide-react';
 
 // Imports
-import { firebaseConfig, COLLECTION_NAME, ORIGINAL_DOC_URL, CATEGORIES } from './config.jsx';
+import { firebaseConfig, COLLECTION_NAME, CATEGORIES, STATUSES } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
@@ -33,6 +32,10 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
+  // Dropdown state
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const dropdownRef = useRef(null);
+
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
   const [newAsset, setNewAsset] = useState({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
@@ -56,6 +59,19 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [user]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setOpenDropdownId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // --- Functions ---
   const showNotification = (message, type = 'success') => { setNotification({ message, type }); setTimeout(() => setNotification(null), 3000); };
@@ -105,7 +121,7 @@ export default function App() {
         assignedDate: new Date().toISOString()
       });
       setAssignModal({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
-      showNotification('เบิกสำเร็จ');
+      showNotification('บันทึกสำเร็จ');
     } catch { showNotification('Failed', 'error'); }
   };
 
@@ -150,6 +166,22 @@ export default function App() {
     setTimeout(() => printWindow.print(), 1000);
   };
 
+  // Helper to open modal for assigning/changing owner
+  const openAssignModal = (asset) => {
+    setAssignModal({
+        open: true, 
+        assetId: asset.id, 
+        assetName: asset.name, 
+        empId: '', 
+        empName: '', 
+        empNickname: '', 
+        empPosition: '', 
+        empDept: '', 
+        empStatus: ''
+    });
+    setOpenDropdownId(null);
+  };
+
   const filteredAssets = assets.filter(a => {
     const match = a.name.toLowerCase().includes(searchTerm.toLowerCase()) || a.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) || (a.assignedTo && a.assignedTo.toLowerCase().includes(searchTerm.toLowerCase()));
     return match && (filterCategory === 'all' || a.category === filterCategory);
@@ -192,7 +224,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style={{ minHeight: '400px' }}>
               {loading ? <div className="p-12 text-center text-slate-500">Loading...</div> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -221,25 +253,95 @@ export default function App() {
                           <td className="px-6 py-4"><StatusBadge status={asset.status} /></td>
                           <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1"><User size={14} className="text-blue-500"/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
                           
-                          {/* แสดงข้อมูลตำแหน่ง */}
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.position}>{asset.position || '-'}</td>
                           
-                          {/* แสดงข้อมูลแผนก */}
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.department}>{asset.department || '-'}</td>
                           
-                          <td className="px-6 py-4 text-right">
-                             <div className="flex justify-end gap-2">
-                              {asset.status === 'available' && <button onClick={() => setAssignModal({open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: ''})} className="flex gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"><ArrowRight size={14}/> เบิก</button>}
-                              {asset.status === 'assigned' && (
-                                <div className="flex gap-1">
-                                  <button onClick={() => handlePrintHandover(asset)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded"><Printer size={16}/></button>
-                                  <button onClick={() => window.open(ORIGINAL_DOC_URL, '_blank')} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded"><FileText size={16}/></button>
-                                </div>
-                              )}
-                              <button onClick={() => setEditModal({ open: true, asset: { ...asset } })} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil size={16}/></button>
-                              {(['assigned','broken','repair'].includes(asset.status)) && <button onClick={() => handleReturn(asset)} className="flex gap-1 px-3 py-1.5 border text-slate-700 text-xs rounded hover:bg-slate-50"><RotateCcw size={14}/> คืน</button>}
-                              <button onClick={() => confirm('ลบรายการ?') && deleteDoc(doc(db, COLLECTION_NAME, asset.id))} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
-                            </div>
+                          {/* --- Action Column with Dropdown --- */}
+                          <td className="px-6 py-4 text-right relative">
+                             <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenDropdownId(openDropdownId === asset.id ? null : asset.id);
+                                }}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                             >
+                                <MoreVertical size={20} />
+                             </button>
+
+                             {/* Dropdown Menu */}
+                             {openDropdownId === asset.id && (
+                                 <div 
+                                    ref={dropdownRef}
+                                    className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-slate-200 overflow-hidden"
+                                    style={{ marginRight: '1.5rem', marginTop: '-10px' }} 
+                                 >
+                                    <div className="py-1">
+                                        {/* Status: Available */}
+                                        {asset.status === 'available' && (
+                                            <button 
+                                                onClick={() => openAssignModal(asset)}
+                                                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                            >
+                                                <ArrowRight size={16} className="text-blue-600"/> เบิกอุปกรณ์
+                                            </button>
+                                        )}
+
+                                        {/* Status: Assigned */}
+                                        {asset.status === 'assigned' && (
+                                            <>
+                                                <button 
+                                                    onClick={() => openAssignModal(asset)}
+                                                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                                >
+                                                    <ArrowLeftRight size={16} className="text-blue-600"/> เปลี่ยนผู้ถือครอง
+                                                </button>
+                                                <button 
+                                                    onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                                >
+                                                    <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ
+                                                </button>
+                                                <button 
+                                                    onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                                >
+                                                    <RotateCcw size={16} className="text-orange-600"/> รับคืนอุปกรณ์
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {/* Common Actions */}
+                                        {(['broken','repair'].includes(asset.status)) && (
+                                            <button 
+                                                onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
+                                                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                            >
+                                                <RotateCcw size={16} className="text-orange-600"/> รับคืนอุปกรณ์
+                                            </button>
+                                        )}
+
+                                        <button 
+                                            onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }}
+                                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                        >
+                                            <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล
+                                        </button>
+                                        
+                                        <div className="border-t border-slate-100 my-1"></div>
+                                        
+                                        <button 
+                                            onClick={() => { 
+                                                if(confirm('ลบรายการนี้?')) { deleteDoc(doc(db, COLLECTION_NAME, asset.id)); }
+                                                setOpenDropdownId(null); 
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                        >
+                                            <Trash2 size={16}/> ลบรายการ
+                                        </button>
+                                    </div>
+                                 </div>
+                             )}
                           </td>
                         </tr>
                       ))}
