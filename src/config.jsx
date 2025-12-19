@@ -1,16 +1,17 @@
 import { Laptop, Monitor, Mouse, Smartphone, Headphones } from 'lucide-react';
 import React from 'react';
 
-// ✅ Firebase Config ของคุณ
+// ✅ Firebase Config: ใช้ import.meta.env เพื่อความปลอดภัย
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
+
 export const COLLECTION_NAME = 'it_assets';
 export const ORIGINAL_DOC_URL = "https://docs.google.com/document/d/e/2PACX-1vROYtlWu5_mIi509E96-LQlkZn3zlOLes2v_yAK3b3su7HnYjDsoRa0Mry3_duF0QjE5NZFUcNq1hha/pub";
 

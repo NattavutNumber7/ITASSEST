@@ -9,9 +9,16 @@ export const parseCSV = (text) => {
     const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
     const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
 
-    // ป้องกัน error กรณีคอลัมน์ไม่ครบ
+    // ป้องกัน error กรณีคอลัมน์ไม่ครบ (ควรมีอย่างน้อย 6 คอลัมน์ตามโครงสร้างเดิม)
     if (cols.length < 5) return null;
 
+    // Col 0: ID
+    // Col 1: Name
+    // Col 2: Nickname
+    // Col 3: Department
+    // Col 4: Position
+    // Col 5: Email
+    // Col 6: Status
     return {
       id: cleanCol(cols[0]),
       name: cleanCol(cols[1]),

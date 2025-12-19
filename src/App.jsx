@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save } from 'lucide-react';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth'; // ✅ เปลี่ยน import
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut } from 'lucide-react';
 
 // Imports
 import { firebaseConfig, COLLECTION_NAME, CATEGORIES, STATUSES } from './config.jsx';
@@ -11,6 +11,7 @@ import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
 import EditModal from './components/EditModal.jsx';
+import Login from './components/Login.jsx'; // ✅ Import Login Component
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -20,6 +21,7 @@ const db = getFirestore(app);
 export default function App() {
   // --- States ---
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // ✅ Loading state สำหรับ Auth
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); 
@@ -42,22 +44,37 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    // ✅ Auth Listener แบบสมบูรณ์
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+
     const savedUrl = localStorage.getItem('it_asset_sheet_url');
     if (savedUrl) { setSheetUrl(savedUrl); fetchEmployeesFromSheet(savedUrl); }
+    
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubscribe = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
+    if (!user) {
+      setAssets([]); // Clear data on logout
+      return;
+    }
+    
+    // ✅ Fetch data only when user is logged in
+    const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setAssets(items);
       setLoading(false);
+    }, (error) => {
+      console.error("Error fetching data:", error);
+      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
+      setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => unsubscribeSnapshot();
   }, [user]);
 
   // Close dropdown when clicking outside
@@ -74,6 +91,19 @@ export default function App() {
   }, []);
 
   // --- Functions ---
+  const handleSaveSettings = () => {
+    localStorage.setItem('it_asset_sheet_url', sheetUrl);
+    showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+
   const showNotification = (message, type = 'success') => { setNotification({ message, type }); setTimeout(() => setNotification(null), 3000); };
 
   const fetchEmployeesFromSheet = async (url) => {
@@ -187,6 +217,17 @@ export default function App() {
     return match && (filterCategory === 'all' || a.category === filterCategory);
   });
 
+  // ✅ 1. Loading Screen (ระหว่างเช็ค Login)
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
+  }
+
+  // ✅ 2. Login Screen (ถ้ายังไม่ Login)
+  if (!user) {
+    return <Login />;
+  }
+
+  // ✅ 3. Main App Screen (ถ้า Login แล้ว)
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       {/* --- Navbar --- */}
@@ -196,16 +237,41 @@ export default function App() {
             <div className="bg-blue-600 p-2 rounded-lg text-white"><Box size={24} /></div>
             <div><h1 className="text-xl font-bold">IT Asset Manager</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"><Settings size={20} /></button>
-            <button onClick={() => setView(view === 'list' ? 'add' : 'list')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-              {view === 'list' ? <><Plus size={18} /> เพิ่มทรัพย์สิน</> : 'กลับหน้ารายการ'}
+          <div className="flex gap-2 items-center">
+            <div className="text-right mr-2 hidden md:block">
+               <p className="text-xs text-slate-500">เข้าใช้งานโดย</p>
+               <p className="text-sm font-semibold text-slate-700">{user.email}</p>
+            </div>
+            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="ตั้งค่า"><Settings size={20} /></button>
+            <div className="h-6 w-px bg-slate-200 mx-1"></div>
+            <button onClick={handleLogout} className="p-2 text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2" title="ออกจากระบบ">
+               <LogOut size={20} />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 mt-6">
+      {/* --- Toolbar --- */}
+      <div className="bg-white border-b border-slate-200 py-3 mb-6">
+         <div className="max-w-6xl mx-auto px-4 flex justify-between items-center">
+            <div className="flex gap-4 items-center">
+               <button onClick={() => setView('list')} className={`text-sm font-medium ${view === 'list' ? 'text-blue-600' : 'text-slate-500'}`}>รายการทรัพย์สิน</button>
+               {view === 'add' && <span className="text-slate-300">/</span>}
+               {view === 'add' && <span className="text-sm font-medium text-blue-600">เพิ่มรายการใหม่</span>}
+            </div>
+            <div>
+                {view === 'list' ? (
+                    <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium transition-colors">
+                        <Plus size={18} /> เพิ่มทรัพย์สิน
+                    </button>
+                ) : (
+                    <button onClick={() => setView('list')} className="text-slate-500 hover:text-slate-700 text-sm">ยกเลิก</button>
+                )}
+            </div>
+         </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4">
         {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white ${notification.type === 'error' ? 'bg-red-500' : 'bg-emerald-600'}`}>{notification.message}</div>}
 
         {/* --- LIST VIEW --- */}
