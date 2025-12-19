@@ -77,7 +77,7 @@ const Login = () => {
         </div>
         
         <div className="bg-slate-50 p-4 text-center text-xs text-slate-500 border-t border-slate-100">
-          IT Department System v1.0
+          IT Asssets System v1.0
         </div>
       </div>
     </div>

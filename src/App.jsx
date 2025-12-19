@@ -238,7 +238,7 @@ export default function App() {
             <div className="p-2 rounded-lg text-white" style={{backgroundColor: COLORS.primary}}>
               <img src={LOGO_URL} alt="Logo" className="w-6 h-6 object-contain filter brightness-0 invert" />
             </div>
-            <div><h1 className="text-xl font-bold">IT Asset Manager</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
+            <div><h1 className="text-xl font-bold">IT Asset Management</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
           </div>
           <div className="flex gap-2 items-center">
             <div className="text-right mr-2 hidden md:block">
@@ -285,7 +285,7 @@ export default function App() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input 
                   type="text" 
-                  placeholder="ค้นหา..." 
+                  placeholder="ค้นหา...(ชื่อทรัพย์สิน,รหัสพนักงาน,หมายเลขทรัพย์สิน" 
                   className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all" 
                   style={{focusBorderColor: COLORS.primary}}
                   value={searchTerm} 
