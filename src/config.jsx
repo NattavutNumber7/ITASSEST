@@ -13,12 +13,21 @@ export const firebaseConfig = {
 };
 
 export const COLLECTION_NAME = 'it_assets';
-export const ORIGINAL_DOC_URL = "https://docs.google.com/document/d/e/2PACX-1vROYtlWu5_mIi509E96-LQlkZn3zlOLes2v_yAK3b3su7HnYjDsoRa0Mry3_duF0QjE5NZFUcNq1hha/pub";
 
-// ✅ Logo Configuration (กลับมาใช้โลโก้เดิม)
+// ✅ ดึง URL เอกสารจาก .env
+export const ORIGINAL_DOC_URL = import.meta.env.VITE_ORIGINAL_DOC_URL || "#";
+
+// ✅ ดึงข้อมูลบริษัทและผู้ลงนามจาก .env
+export const COMPANY_INFO = {
+  companyName: import.meta.env.VITE_COMPANY_NAME ,
+  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME ,
+  witnessName: import.meta.env.VITE_WITNESS_NAME 
+};
+
+// ✅ Logo Configuration
 export const LOGO_URL = "/FRESHKET LOGO-01.png";
 
-// ✅ Color Palette (สดใสตาม CI)
+// ✅ Color Palette
 export const COLORS = {
   primary: '#008065',      // Freshket Green Main
   primaryHover: '#007c7c', // Secondary Green
@@ -39,7 +48,6 @@ export const CATEGORIES = [
   { id: 'accessory', name: 'Accessory', icon: <Headphones size={18} /> },
 ];
 
-// ปรับสี Status Badge ให้สดใสขึ้น
 export const STATUSES = {
   AVAILABLE: { id: 'available', label: 'ว่าง (พร้อมใช้)', color: 'bg-[#008065]/10 text-[#008065] border-[#008065]/30' },
   ASSIGNED: { id: 'assigned', label: 'ใช้งานอยู่', color: 'bg-[#007c7c]/10 text-[#007c7c] border-[#007c7c]/30' },
