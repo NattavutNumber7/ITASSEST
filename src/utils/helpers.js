@@ -1,24 +1,16 @@
-// ฟังก์ชันแปลง CSV พนักงาน (Employee)
+import { LOGO_URL } from '../config.jsx';
+
 export const parseCSV = (text) => {
-  if (!text) return []; // ป้องกัน text เป็น null
+  if (!text) return [];
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
   
   return lines.slice(1).map(line => {
-    // Regex เพื่อจัดการกรณีมี comma ในเครื่องหมายคำพูด
     const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
     const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
 
-    // ป้องกัน error กรณีคอลัมน์ไม่ครบ (ควรมีอย่างน้อย 6 คอลัมน์ตามโครงสร้างเดิม)
     if (cols.length < 5) return null;
 
-    // Col 0: ID
-    // Col 1: Name
-    // Col 2: Nickname
-    // Col 3: Department
-    // Col 4: Position
-    // Col 5: Email
-    // Col 6: Status
     return {
       id: cleanCol(cols[0]),
       name: cleanCol(cols[1]),
@@ -28,10 +20,9 @@ export const parseCSV = (text) => {
       email: cleanCol(cols[5]),
       status: cleanCol(cols[6]) || 'Active'
     };
-  }).filter(item => item !== null); // กรองข้อมูลที่พังออก
+  }).filter(item => item !== null);
 };
 
-// ฟังก์ชันสร้าง HTML สำหรับปริ้นใบส่งมอบ
 export const generateHandoverHtml = (asset) => {
   const dateObj = new Date();
   const day = dateObj.getDate();
@@ -91,7 +82,7 @@ export const generateHandoverHtml = (asset) => {
         </style>
       </head>
       <body>
-          <img src="/FRESHKET LOGO-01.png" style="position: absolute; top: 20px; left: 20px; width: 100px; height: auto;" />
+          <img src="${LOGO_URL}" style="position: absolute; top: 20px; left: 20px; width: 100px; height: auto;" />
           <div class="header">แบบบันทึกรับ – คืนทรัพย์สินบริษัท</div>
           <div class="date-line">วันที่ ${day} เดือน ${month} พ.ศ. ${year}</div>
           

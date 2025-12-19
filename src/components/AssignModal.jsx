@@ -1,13 +1,14 @@
 import React from 'react';
 import { Search } from 'lucide-react';
+import { COLORS } from '../config.jsx';
 
 const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStatus }) => {
   if (!show) return null;
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 className="text-lg font-bold mb-1">เบิกจ่ายอุปกรณ์</h3>
-        <p className="text-slate-500 text-sm mb-4">ทรัพย์สิน: <span className="font-semibold text-slate-800">{data.assetName}</span></p>
+        <h3 className="text-lg font-bold mb-1 text-slate-800">เบิกจ่ายอุปกรณ์</h3>
+        <p className="text-slate-500 text-sm mb-4">ทรัพย์สิน: <span className="font-semibold" style={{color: COLORS.primary}}>{data.assetName}</span></p>
         
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
@@ -16,7 +17,8 @@ const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStat
               <input 
                 autoFocus 
                 type="text" 
-                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg uppercase" 
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg uppercase outline-none focus:ring-1" 
+                style={{borderColor: COLORS.primary}}
                 placeholder="ค้นหารหัส..." 
                 value={data.empId} 
                 onChange={(e) => setData({...data, empId: e.target.value})} 
@@ -25,7 +27,7 @@ const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStat
               <button 
                 type="button" 
                 onClick={() => onLookup(data.empId)} 
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg transition-colors"
               >
                 <Search size={18} />
               </button>
@@ -59,7 +61,7 @@ const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStat
                 <input 
                     type="text" 
                     className="w-full bg-transparent border-b border-slate-300 py-1 text-sm text-slate-700 outline-none" 
-                    value={data.empPosition || ''} // ✅ แสดงตำแหน่ง
+                    value={data.empPosition || ''} 
                     readOnly 
                 />
               </div>
@@ -84,8 +86,8 @@ const AssignModal = ({ show, onClose, onSubmit, data, setData, onLookup, empStat
           </div>
 
           <div className="flex gap-3 justify-end pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">ยกเลิก</button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">ยืนยันการเบิก</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">ยกเลิก</button>
+            <button type="submit" className="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>ยืนยันการเบิก</button>
           </div>
         </form>
       </div>

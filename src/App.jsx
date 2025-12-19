@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth'; // ✅ เปลี่ยน import
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut } from 'lucide-react';
 
 // Imports
-import { firebaseConfig, COLLECTION_NAME, CATEGORIES, STATUSES } from './config.jsx';
+import { firebaseConfig, COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
 import EditModal from './components/EditModal.jsx';
-import Login from './components/Login.jsx'; // ✅ Import Login Component
+import Login from './components/Login.jsx';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -21,7 +21,7 @@ const db = getFirestore(app);
 export default function App() {
   // --- States ---
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // ✅ Loading state สำหรับ Auth
+  const [authLoading, setAuthLoading] = useState(true);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); 
@@ -44,7 +44,6 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    // ✅ Auth Listener แบบสมบูรณ์
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
@@ -58,11 +57,10 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
-      setAssets([]); // Clear data on logout
+      setAssets([]);
       return;
     }
     
-    // ✅ Fetch data only when user is logged in
     const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -77,7 +75,6 @@ export default function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -217,24 +214,30 @@ export default function App() {
     return match && (filterCategory === 'all' || a.category === filterCategory);
   });
 
-  // ✅ 1. Loading Screen (ระหว่างเช็ค Login)
   if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}>
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div>
+          <span className="text-sm font-medium">Loading...</span>
+        </div>
+      </div>
+    );
   }
 
-  // ✅ 2. Login Screen (ถ้ายังไม่ Login)
   if (!user) {
     return <Login />;
   }
 
-  // ✅ 3. Main App Screen (ถ้า Login แล้ว)
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
+    <div className="min-h-screen font-sans text-slate-900 pb-20" style={{backgroundColor: COLORS.background}}>
       {/* --- Navbar --- */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg text-white"><Box size={24} /></div>
+            <div className="p-2 rounded-lg text-white" style={{backgroundColor: COLORS.primary}}>
+              <img src={LOGO_URL} alt="Logo" className="w-6 h-6 object-contain filter brightness-0 invert" />
+            </div>
             <div><h1 className="text-xl font-bold">IT Asset Manager</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
           </div>
           <div className="flex gap-2 items-center">
@@ -244,7 +247,7 @@ export default function App() {
             </div>
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="ตั้งค่า"><Settings size={20} /></button>
             <div className="h-6 w-px bg-slate-200 mx-1"></div>
-            <button onClick={handleLogout} className="p-2 text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2" title="ออกจากระบบ">
+            <button onClick={handleLogout} className="p-2 hover:bg-red-50 rounded-lg flex items-center gap-2" style={{color: COLORS.secondary}} title="ออกจากระบบ">
                <LogOut size={20} />
             </button>
           </div>
@@ -255,13 +258,13 @@ export default function App() {
       <div className="bg-white border-b border-slate-200 py-3 mb-6">
          <div className="max-w-6xl mx-auto px-4 flex justify-between items-center">
             <div className="flex gap-4 items-center">
-               <button onClick={() => setView('list')} className={`text-sm font-medium ${view === 'list' ? 'text-blue-600' : 'text-slate-500'}`}>รายการทรัพย์สิน</button>
+               <button onClick={() => setView('list')} className={`text-sm font-medium ${view === 'list' ? '' : 'text-slate-500'}`} style={{color: view === 'list' ? COLORS.primary : undefined}}>รายการทรัพย์สิน</button>
                {view === 'add' && <span className="text-slate-300">/</span>}
-               {view === 'add' && <span className="text-sm font-medium text-blue-600">เพิ่มรายการใหม่</span>}
+               {view === 'add' && <span className="text-sm font-medium" style={{color: COLORS.primary}}>เพิ่มรายการใหม่</span>}
             </div>
             <div>
                 {view === 'list' ? (
-                    <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium transition-colors">
+                    <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 text-sm font-medium transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>
                         <Plus size={18} /> เพิ่มทรัพย์สิน
                     </button>
                 ) : (
@@ -272,7 +275,7 @@ export default function App() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4">
-        {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white ${notification.type === 'error' ? 'bg-red-500' : 'bg-emerald-600'}`}>{notification.message}</div>}
+        {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white`} style={{backgroundColor: notification.type === 'error' ? COLORS.error : COLORS.primary}}>{notification.message}</div>}
 
         {/* --- LIST VIEW --- */}
         {view === 'list' && (
@@ -280,12 +283,26 @@ export default function App() {
             <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input type="text" placeholder="ค้นหา..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input 
+                  type="text" 
+                  placeholder="ค้นหา..." 
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all" 
+                  style={{focusBorderColor: COLORS.primary}}
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
               </div>
               <div className="flex gap-2 overflow-x-auto">
-                <button onClick={() => setFilterCategory('all')} className={`px-4 py-2 rounded-lg text-sm border ${filterCategory === 'all' ? 'bg-slate-800 text-white' : 'bg-white'}`}>ทั้งหมด</button>
+                <button onClick={() => setFilterCategory('all')} className={`px-4 py-2 rounded-lg text-sm border ${filterCategory === 'all' ? 'text-white' : 'bg-white hover:bg-slate-50'}`} style={{backgroundColor: filterCategory === 'all' ? '#1e293b' : undefined}}>ทั้งหมด</button>
                 {CATEGORIES.map(cat => (
-                  <button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-2 rounded-lg text-sm border flex gap-2 ${filterCategory === cat.id ? 'bg-blue-50 text-blue-700' : 'bg-white'}`}>{cat.icon} {cat.name}</button>
+                  <button 
+                    key={cat.id} 
+                    onClick={() => setFilterCategory(cat.id)} 
+                    className={`px-3 py-2 rounded-lg text-sm border flex gap-2 ${filterCategory === cat.id ? '' : 'bg-white hover:bg-slate-50'}`}
+                    style={filterCategory === cat.id ? {backgroundColor: `${COLORS.primary}10`, color: COLORS.primary, borderColor: `${COLORS.primary}20`} : {}}
+                  >
+                    {cat.icon} {cat.name}
+                  </button>
                 ))}
               </div>
             </div>
@@ -309,7 +326,7 @@ export default function App() {
                         <tr key={asset.id} className="hover:bg-slate-50">
                           <td className="px-6 py-4">
                             <div className="flex gap-3">
-                              <div className="p-2 bg-slate-100 rounded-lg text-slate-600">{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
+                              <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
                               <div>
                                 <div className="font-medium flex gap-2">{asset.name} {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}</div>
                                 <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
@@ -317,7 +334,7 @@ export default function App() {
                             </div>
                           </td>
                           <td className="px-6 py-4"><StatusBadge status={asset.status} /></td>
-                          <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1"><User size={14} className="text-blue-500"/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
+                          <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
                           
                           <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[150px]" title={asset.position}>{asset.position || '-'}</td>
                           
@@ -330,7 +347,8 @@ export default function App() {
                                     e.stopPropagation();
                                     setOpenDropdownId(openDropdownId === asset.id ? null : asset.id);
                                 }}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
+                                style={{':hover': { color: COLORS.primary }}}
                              >
                                 <MoreVertical size={20} />
                              </button>
@@ -349,7 +367,7 @@ export default function App() {
                                                 onClick={() => openAssignModal(asset)}
                                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                             >
-                                                <ArrowRight size={16} className="text-blue-600"/> เบิกอุปกรณ์
+                                                <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์
                                             </button>
                                         )}
 
@@ -360,7 +378,7 @@ export default function App() {
                                                     onClick={() => openAssignModal(asset)}
                                                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                                 >
-                                                    <ArrowLeftRight size={16} className="text-blue-600"/> เปลี่ยนผู้ถือครอง
+                                                    <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง
                                                 </button>
                                                 <button 
                                                     onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }}
@@ -372,7 +390,7 @@ export default function App() {
                                                     onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
                                                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                                 >
-                                                    <RotateCcw size={16} className="text-orange-600"/> รับคืนอุปกรณ์
+                                                    <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์
                                                 </button>
                                             </>
                                         )}
@@ -383,7 +401,7 @@ export default function App() {
                                                 onClick={() => { handleReturn(asset); setOpenDropdownId(null); }}
                                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                             >
-                                                <RotateCcw size={16} className="text-orange-600"/> รับคืนอุปกรณ์
+                                                <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์
                                             </button>
                                         )}
 
@@ -422,18 +440,18 @@ export default function App() {
         {/* --- ADD VIEW --- */}
         {view === 'add' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
-             <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus className="text-blue-600" /> เพิ่มทรัพย์สินใหม่</h2>
+             <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
              <form onSubmit={handleAddAsset} className="space-y-4">
                <div className="grid grid-cols-2 gap-4">
-                 <div><label className="block text-sm font-medium mb-1">ชื่อทรัพย์สิน</label><input type="text" required className="w-full px-3 py-2 border rounded-lg" value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} /></div>
-                 <div><label className="block text-sm font-medium mb-1">Serial Number</label><input type="text" required className="w-full px-3 py-2 border rounded-lg" value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} /></div>
+                 <div><label className="block text-sm font-medium mb-1">ชื่อทรัพย์สิน</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} /></div>
+                 <div><label className="block text-sm font-medium mb-1">Serial Number</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} /></div>
                </div>
                <div className="flex items-center gap-2"><input type="checkbox" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> <label className="text-sm">เป็นเครื่องเช่า</label></div>
                <div>
                  <label className="block text-sm font-medium mb-1">หมวดหมู่</label>
-                 <div className="grid grid-cols-5 gap-2">{CATEGORIES.map(c => <button key={c.id} type="button" onClick={() => setNewAsset({...newAsset, category: c.id})} className={`p-3 border rounded text-xs flex flex-col items-center ${newAsset.category === c.id ? 'border-blue-500 bg-blue-50' : ''}`}>{c.icon} {c.name}</button>)}</div>
+                 <div className="grid grid-cols-5 gap-2">{CATEGORIES.map(c => <button key={c.id} type="button" onClick={() => setNewAsset({...newAsset, category: c.id})} className={`p-3 border rounded text-xs flex flex-col items-center ${newAsset.category === c.id ? '' : 'hover:bg-slate-50'}`} style={newAsset.category === c.id ? {borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}10`, color: COLORS.primary} : {}}>{c.icon} {c.name}</button>)}</div>
                </div>
-               <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg">บันทึก</button>
+               <button type="submit" className="w-full text-white py-2 rounded-lg hover:opacity-90 transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>บันทึก</button>
              </form>
           </div>
         )}
