@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signInWithPopup } from 'firebase/auth'; 
 import { Loader2 } from 'lucide-react';
 import { COLORS, LOGO_URL, auth, googleProvider } from '../config.jsx'; // นำเข้า auth และ provider จาก config
 
-const Login = () => {
+const Login = ({ message }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // ✅ ใช้ useEffect เพื่อตรวจสอบและตั้งค่า Error เมื่อมี message ส่งมาจาก App.jsx
+  useEffect(() => {
+    if (message) {
+      setError(message.text); // ดึงข้อความจาก Object
+      setLoading(false); // ✅ สั่งหยุดหมุนทันทีที่มี Error เข้ามา
+    }
+  }, [message]); // ทำงานเมื่อ message เปลี่ยนแปลง (เช่น timestamp เปลี่ยน)
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -23,7 +31,7 @@ const Login = () => {
       if (err.code === 'auth/popup-closed-by-user') msg = "คุณปิดหน้าต่างล็อกอินก่อนทำรายการสำเร็จ";
       if (err.code === 'auth/cancelled-popup-request') msg = "มีการเปิดหน้าต่างล็อกอินซ้อนกัน";
       setError(msg);
-      setLoading(false);
+      setLoading(false); // หยุดหมุนถ้า Login ไม่สำเร็จจาก Firebase
     }
   };
 
@@ -48,8 +56,8 @@ const Login = () => {
           </div>
 
           {error && (
-            <div className="text-sm p-3 rounded-lg border flex items-center gap-2 mb-4" style={{backgroundColor: '#fef2f2', borderColor: '#fee2e2', color: '#dc2626'}}>
-              <span className="font-bold">Error:</span> {error}
+            <div className="text-sm p-3 rounded-lg border flex items-center gap-2 mb-4 animate-pulse" style={{backgroundColor: '#fef2f2', borderColor: '#fee2e2', color: '#dc2626'}}>
+              <span className="font-bold">แจ้งเตือน:</span> {error}
             </div>
           )}
 

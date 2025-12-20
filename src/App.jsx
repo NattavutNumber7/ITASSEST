@@ -7,7 +7,6 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, UserPlus, ArrowRight, ArrowLeftRight, Upload, Download, X, Save, LogOut, History, FileClock } from 'lucide-react';
 
 // นำเข้า Config และ Components
-// สังเกตว่าเรานำเข้า auth และ db มาจาก config.jsx โดยตรง
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
@@ -24,6 +23,8 @@ export default function App() {
   // --- สถานะ (States) ---
   const [user, setUser] = useState(null); // เก็บข้อมูลผู้ใช้ที่ล็อกอิน
   const [authLoading, setAuthLoading] = useState(true); // สถานะการโหลดข้อมูลยืนยันตัวตน
+  const [loginError, setLoginError] = useState(null); // ✅ เก็บ Error เป็น Object เพื่อให้ตรวจจับการเปลี่ยนแปลงได้
+
   const [assets, setAssets] = useState([]); // รายการทรัพย์สินทั้งหมด
   const [loading, setLoading] = useState(true); // สถานะการโหลดข้อมูลทรัพย์สิน
   const [view, setView] = useState('list'); // มุมมองปัจจุบัน ('list' หรือ 'add')
@@ -54,16 +55,26 @@ export default function App() {
   useEffect(() => {
     // ฟังก์ชันนี้จะทำงานทุกครั้งที่สถานะการล็อกอินเปลี่ยน (เช่น ล็อกอินสำเร็จ, ล็อกเอาท์)
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setAuthLoading(true);
       if (currentUser) {
-        // ถ้ามีผู้ใช้ล็อกอินเข้ามา ให้ตรวจสอบอีเมล
-        if (!currentUser.email.endsWith('@freshket.co')) {
-           // ถ้าอีเมลไม่ใช่ @freshket.co ให้บังคับล็อกเอาท์ทันที
-          await signOut(auth);
-          setUser(null);
-          alert('❌ เข้าสู่ระบบล้มเหลว\n\nระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น');
+        // ✅ แปลงอีเมลเป็นตัวพิมพ์เล็กเพื่อตรวจสอบ ป้องกันปัญหา Case Sensitive
+        const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
+        
+        // ตรวจสอบ Domain
+        if (!userEmail.endsWith('@freshket.co')) {
+           console.warn("Access Denied: Email domain not allowed");
+           
+           // ✅ ส่ง Error พร้อม Timestamp เพื่อให้ useEffect ใน Login ทำงานทุกครั้งที่มีการ Login ผิดพลาด (แม้จะเป็นข้อความเดิม)
+           setLoginError({ 
+             text: 'ขออภัย ระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น', 
+             timestamp: Date.now() 
+           });
+           
+           // Sign out ทันที
+           await signOut(auth);
+           setUser(null);
         } else {
-          // ถ้าอีเมลถูกต้อง ให้เก็บข้อมูลผู้ใช้ลง State
+          // ถ้าอีเมลถูกต้อง เคลียร์ Error และตั้งค่า User
+          setLoginError(null);
           setUser(currentUser);
         }
       } else {
@@ -337,7 +348,8 @@ export default function App() {
 
   // 2. ถ้ายังไม่ได้ล็อกอิน ให้แสดงหน้า Login
   if (!user) {
-    return <Login />;
+    // ✅ ส่ง prop message (ที่มีข้อมูล Error) ไปยัง Login component
+    return <Login message={loginError} />;
   }
 
   // 3. ถ้าล็อกอินแล้ว แสดงหน้าหลัก (Dashboard)
