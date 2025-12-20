@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithPopup } from 'firebase/auth'; 
 import { Loader2 } from 'lucide-react';
-import { COLORS, LOGO_URL, auth, googleProvider } from '../config.jsx'; // นำเข้า auth และ provider จาก config
+// ปรับ path import ให้แน่ใจว่าถูกต้อง (ตัด .jsx ออกเพื่อให้ bundler จัดการ)
+import { COLORS, LOGO_URL, auth, googleProvider } from '../config'; 
 
 const Login = ({ message }) => {
   const [loading, setLoading] = useState(false);
@@ -10,10 +11,12 @@ const Login = ({ message }) => {
   // ✅ ใช้ useEffect เพื่อตรวจสอบและตั้งค่า Error เมื่อมี message ส่งมาจาก App.jsx
   useEffect(() => {
     if (message) {
-      setError(message.text); // ดึงข้อความจาก Object
+      // ตรวจสอบว่า message เป็น object หรือ string เพื่อดึงข้อความออกมาแสดงผลได้ถูกต้อง
+      const errorMsg = typeof message === 'object' ? message.text : message;
+      setError(errorMsg); 
       setLoading(false); // ✅ สั่งหยุดหมุนทันทีที่มี Error เข้ามา
     }
-  }, [message]); // ทำงานเมื่อ message เปลี่ยนแปลง (เช่น timestamp เปลี่ยน)
+  }, [message]); // ทำงานเมื่อ message เปลี่ยนแปลง
 
   const handleGoogleLogin = async () => {
     setLoading(true);
