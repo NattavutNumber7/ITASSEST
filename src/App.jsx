@@ -18,7 +18,7 @@ import HistoryModal from './components/HistoryModal.jsx';
 import ReturnModal from './components/ReturnModal.jsx'; 
 import DeleteModal from './components/DeleteModal.jsx';
 import DeletedLogModal from './components/DeletedLogModal.jsx';
-import Dashboard from './components/Dashboard.jsx'; // ✅ นำเข้า Dashboard
+import Dashboard from './components/Dashboard.jsx';
 
 export default function App() {
   // --- สถานะ (States) ---
@@ -28,7 +28,7 @@ export default function App() {
 
   const [assets, setAssets] = useState([]); 
   const [loading, setLoading] = useState(true); 
-  const [view, setView] = useState('dashboard'); // ✅ เริ่มต้นที่หน้า Dashboard
+  const [view, setView] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState(''); 
   const [filterCategory, setFilterCategory] = useState('all'); 
   const [notification, setNotification] = useState(null); 
@@ -237,9 +237,9 @@ export default function App() {
                           <td className="px-6 py-4"><StatusBadge status={asset.status} /></td>
                           <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
                           
-                          {/* ✅ แก้ไข: กลับมาใช้ truncate เพื่อความสวยงาม แต่เพิ่ม title เพื่อให้อ่านตัวเต็มได้ */}
-                          <td className="px-6 py-4 text-sm text-slate-600 max-w-[180px] truncate cursor-help" title={asset.position || ''}>{asset.position || '-'}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600 max-w-[180px] truncate cursor-help" title={asset.department || ''}>{asset.department || '-'}</td>
+                          {/* ✅ แก้ไข: เอา truncate ออกเพื่อให้ข้อความแสดงเต็ม และสามารถ wrap ได้ */}
+                          <td className="px-6 py-4 text-sm text-slate-600">{asset.position || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600">{asset.department || '-'}</td>
                           
                           <td className="px-6 py-4 text-right relative">
                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
