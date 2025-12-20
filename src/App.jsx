@@ -224,7 +224,7 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredAssets.map(asset => (
-                        <tr key={asset.id} className="hover:bg-slate-50">
+                        <tr key={asset.id} className="hover:bg-slate-50 align-top"> {/* ✅ เพิ่ม align-top เพื่อให้ข้อความชิดบนเสมอ */}
                           <td className="px-6 py-4">
                             <div className="flex gap-3">
                               <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
@@ -234,12 +234,14 @@ export default function App() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4"><StatusBadge status={asset.status} /></td>
+                          {/* ✅ แก้ไข: เพิ่ม whitespace-nowrap ให้สถานะไม่ตัดคำ */}
+                          <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
+                          
                           <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
                           
-                          {/* ✅ แก้ไข: เอา truncate ออกเพื่อให้ข้อความแสดงเต็ม และสามารถ wrap ได้ */}
-                          <td className="px-6 py-4 text-sm text-slate-600">{asset.position || '-'}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600">{asset.department || '-'}</td>
+                          {/* ✅ แก้ไข: กำหนด min-width ให้ตำแหน่งและแผนก เพื่อให้มีพื้นที่แสดงผล */}
+                          <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                           
                           <td className="px-6 py-4 text-right relative">
                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
