@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X } from 'lucide-react';
+import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search } from 'lucide-react';
 import { CATEGORIES, COLORS, STATUSES } from '../config.jsx';
 
 const Dashboard = ({ assets }) => {
@@ -20,9 +20,20 @@ const Dashboard = ({ assets }) => {
   const stats = useMemo(() => {
     const total = filteredAssets.length;
     const available = filteredAssets.filter(a => a.status === 'available').length;
+    
+    // นับ assigned รวมทั้งคนถือและเครื่องกลาง (ถ้าสถานะเป็น assigned)
     const assigned = filteredAssets.filter(a => a.status === 'assigned').length;
+    
     const broken = filteredAssets.filter(a => a.status === 'broken').length;
     const repair = filteredAssets.filter(a => a.status === 'repair').length;
+    const lost = filteredAssets.filter(a => a.status === 'lost').length; // ✅ นับจำนวนสูญหาย
+
+    // แยกนับเครื่องกลาง (Central) ที่สถานะเป็น assigned
+    const centralAssigned = filteredAssets.filter(a => a.status === 'assigned' && a.isCentral).length;
+    
+    // แยกนับเครื่องพนักงาน (Person) ที่สถานะเป็น assigned
+    const personAssigned = filteredAssets.filter(a => a.status === 'assigned' && !a.isCentral).length;
+
 
     // คำนวณตามหมวดหมู่
     const byCategory = CATEGORIES.map(cat => ({
@@ -31,7 +42,7 @@ const Dashboard = ({ assets }) => {
       percentage: total > 0 ? (filteredAssets.filter(a => a.category === cat.id).length / total) * 100 : 0
     })).sort((a, b) => b.count - a.count);
 
-    return { total, available, assigned, broken, repair, byCategory };
+    return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, byCategory };
   }, [filteredAssets]);
 
   // ฟังก์ชันสร้าง Pie Chart
@@ -41,18 +52,20 @@ const Dashboard = ({ assets }) => {
     const pAvailable = (stats.available / stats.total) * 100;
     const pAssigned = pAvailable + (stats.assigned / stats.total) * 100;
     const pRepair = pAssigned + (stats.repair / stats.total) * 100;
+    const pBroken = pRepair + (stats.broken / stats.total) * 100;
+    const pLost = pBroken + (stats.lost / stats.total) * 100; // ✅ เพิ่ม Lost ใน Pie Chart
     
     return {
       background: `conic-gradient(
         ${COLORS.success} 0% ${pAvailable}%, 
         ${COLORS.primary} ${pAvailable}% ${pAssigned}%, 
         ${COLORS.secondary} ${pAssigned}% ${pRepair}%, 
-        ${COLORS.error} ${pRepair}% 100%
+        ${COLORS.error} ${pRepair}% ${pBroken}%,
+        #94a3b8 ${pBroken}% 100% 
       )`
     };
   };
 
-  // ฟังก์ชันล้างตัวกรอง
   const clearFilters = () => {
     setFilterCategory('all');
     setFilterStatus('all');
@@ -68,7 +81,7 @@ const Dashboard = ({ assets }) => {
           <p className="text-slate-500 text-sm">ข้อมูลสถานะทรัพย์สินทั้งหมดในองค์กร</p>
         </div>
         
-        {/* ✅ ส่วน UI ตัวกรอง (Filter Bar) */}
+        {/* Filter Bar */}
         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
             {isFiltered && (
                <div className="text-xs text-slate-500 mr-2">
@@ -82,7 +95,6 @@ const Dashboard = ({ assets }) => {
                 </div>
                 <div className="h-4 w-px bg-slate-200"></div>
                 
-                {/* Filter Category */}
                 <select 
                     value={filterCategory} 
                     onChange={(e) => setFilterCategory(e.target.value)}
@@ -94,7 +106,6 @@ const Dashboard = ({ assets }) => {
 
                 <div className="h-4 w-px bg-slate-200"></div>
 
-                {/* Filter Status */}
                 <select 
                     value={filterStatus} 
                     onChange={(e) => setFilterStatus(e.target.value)}
@@ -117,12 +128,36 @@ const Dashboard = ({ assets }) => {
         </div>
       </div>
 
-      {/* Cards สรุปยอด (ตัวเลขจะเปลี่ยนตาม Filter) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Cards สรุปยอด */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} icon={<CheckCircle size={24} />} color="bg-emerald-500" bgColor="bg-emerald-50" textColor="text-emerald-700" />
-        <StatCard title="ถูกใช้งานอยู่" count={stats.assigned} total={stats.total} icon={<User size={24} />} color="bg-[#008065]" bgColor="bg-[#008065]/10" textColor="text-[#008065]" />
+        
+        {/* แยก Card ใช้งานอยู่ ให้เห็นชัดเจนขึ้น */}
+        <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all`}>
+            <div className="flex justify-between items-start">
+            <div>
+                <p className="text-sm text-slate-500 font-medium mb-1">ถูกใช้งานอยู่</p>
+                <div className="flex items-baseline gap-2">
+                    <h4 className="text-2xl font-bold text-slate-800">{stats.assigned}</h4>
+                    <span className="text-xs text-slate-400 font-normal">(คน: {stats.personAssigned} / กลาง: {stats.centralAssigned})</span>
+                </div>
+            </div>
+            <div className={`p-2.5 rounded-lg bg-[#008065]/10 text-[#008065]`}>
+                <User size={24} />
+            </div>
+            </div>
+            <div className="mt-3 w-full bg-slate-100 rounded-full h-1.5">
+            <div 
+                className={`h-1.5 rounded-full bg-[#008065]`} 
+                style={{ width: `${stats.total > 0 ? (stats.assigned / stats.total) * 100 : 0}%` }}
+            ></div>
+            </div>
+        </div>
+
         <StatCard title="ส่งซ่อม" count={stats.repair} total={stats.total} icon={<Wrench size={24} />} color="bg-orange-500" bgColor="bg-orange-50" textColor="text-orange-700" />
         <StatCard title="ชำรุด / เสียหาย" count={stats.broken} total={stats.total} icon={<AlertTriangle size={24} />} color="bg-red-500" bgColor="bg-red-50" textColor="text-red-700" />
+        {/* ✅ เพิ่ม Card สูญหาย */}
+        <StatCard title="สูญหาย" count={stats.lost} total={stats.total} icon={<Search size={24} />} color="bg-slate-500" bgColor="bg-slate-100" textColor="text-slate-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -143,6 +178,8 @@ const Dashboard = ({ assets }) => {
                 <LegendItem color={COLORS.primary} label="ใช้งานอยู่" count={stats.assigned} total={stats.total} />
                 <LegendItem color={COLORS.secondary} label="ส่งซ่อม" count={stats.repair} total={stats.total} />
                 <LegendItem color={COLORS.error} label="ชำรุด" count={stats.broken} total={stats.total} />
+                {/* ✅ เพิ่ม Legend สูญหาย */}
+                <LegendItem color="#94a3b8" label="สูญหาย" count={stats.lost} total={stats.total} />
                 </div>
             </div>
           ) : (

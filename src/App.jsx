@@ -7,8 +7,8 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus } from 'lucide-react';
 
 // นำเข้า Config และ Components
+// ✅ แก้ไข path ให้ถูกต้อง: ใช้ ./config.jsx สำหรับไฟล์ใน src/ (ไม่ใช่ ../config.jsx)
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
-// ✅ Import parseLaptopCSV เพิ่มเข้ามา
 import { parseCSV, parseLaptopCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
@@ -144,7 +144,6 @@ export default function App() {
       } finally { setIsSyncing(false); } 
   };
 
-  // ✅ ฟังก์ชัน Sync Laptop
   const handleSyncLaptops = async () => {
     if (!laptopSheetUrl) return;
     setIsSyncingLaptops(true);
@@ -154,41 +153,32 @@ export default function App() {
         const text = await res.text();
         const laptopData = parseLaptopCSV(text);
         
-        // ดึง Serial Number ทั้งหมดที่มีอยู่ในระบบมาเช็ค
-        // ใช้ Map เพื่อเข้าถึงข้อมูลเดิมได้เร็ว
         const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
         
         let addedCount = 0;
         let updatedCount = 0;
         
         for (const item of laptopData) {
-            // เตรียมข้อมูลการ Assign
-            let assignedData = {
-                status: 'available',
+            const finalStatus = item.status; 
+            let assigneeInfo = {
                 assignedTo: null,
                 department: null,
                 position: null,
                 assignedDate: null
             };
 
-            // ถ้ามี Employee ID ให้ลองค้นหาในรายชื่อพนักงาน
             if (item.employeeId) {
-                // ค้นหาพนักงานจาก state employees (ต้องโหลดมาก่อนแล้ว)
                 const emp = employees.find(e => e.id.toLowerCase() === item.employeeId.toLowerCase());
                 if (emp) {
-                    assignedData = {
-                        status: 'assigned',
+                    assigneeInfo = {
                         assignedTo: `${emp.name} (${emp.nickname})`,
-                        employeeId: emp.id,
+                        employeeId: emp.id, 
                         department: emp.department,
                         position: emp.position,
                         assignedDate: new Date().toISOString()
                     };
                 } else {
-                    // ถ้าหาไม่เจอ แต่มี ID ให้ใส่เป็น Unknown ไว้ก่อน
-                    // ระบบจะแสดง Unknown (ID: 00123) เพื่อให้รู้ว่ามีรหัส
-                    assignedData = {
-                        status: 'assigned',
+                    assigneeInfo = {
                         assignedTo: `Unknown (ID: ${item.employeeId})`,
                         employeeId: item.employeeId,
                         assignedDate: new Date().toISOString()
@@ -196,23 +186,21 @@ export default function App() {
                 }
             }
 
-            // เช็คว่ามี Serial นี้อยู่แล้วหรือไม่
+            const dataToSave = {
+                ...item,
+                ...assigneeInfo,
+                status: finalStatus, 
+                isCentral: false, 
+                location: ''
+            };
+
             if (existingAssetsMap.has(item.serialNumber)) {
-                // ✅ มีอยู่แล้ว -> อัปเดตข้อมูล (Update)
                 const existingAsset = existingAssetsMap.get(item.serialNumber);
-                await updateDoc(doc(db, COLLECTION_NAME, existingAsset.id), {
-                    brand: item.brand,
-                    name: item.name,
-                    ...assignedData, // อัปเดตสถานะและผู้ถือครองตามไฟล์ CSV ล่าสุด
-                });
+                await updateDoc(doc(db, COLLECTION_NAME, existingAsset.id), dataToSave);
                 updatedCount++;
             } else {
-                // ✅ ยังไม่มี -> เพิ่มใหม่ (Add)
                 await addDoc(collection(db, COLLECTION_NAME), {
-                    ...item,
-                    ...assignedData,
-                    isCentral: false, 
-                    location: '',
+                    ...dataToSave,
                     createdAt: serverTimestamp()
                 });
                 addedCount++;
@@ -274,7 +262,16 @@ export default function App() {
         } catch { showNotification('Failed', 'error'); }
     } else if (assignType === 'central') {
         try {
-            await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { status: 'assigned', assignedTo: `Central - ${assignModal.location}`, employeeId: null, department: null, position: null, assignedDate: new Date().toISOString(), isCentral: true, location: assignModal.location });
+            await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
+                status: 'assigned', 
+                assignedTo: `Central - ${assignModal.location}`, 
+                employeeId: null, 
+                department: null, 
+                position: null, 
+                assignedDate: new Date().toISOString(), 
+                isCentral: true, 
+                location: assignModal.location 
+            });
             await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `ตั้งเป็นเครื่องกลาง: ${assignModal.location}`);
             setAssignModal({ ...assignModal, open: false }); showNotification('ตั้งเป็นเครื่องกลางสำเร็จ');
           } catch { showNotification('Failed', 'error'); }
@@ -282,7 +279,44 @@ export default function App() {
   };
 
   const handleEditSubmit = async (e) => { e.preventDefault(); try { const updateData = { ...editModal.asset }; if (updateData.status !== 'assigned') { updateData.assignedTo = null; updateData.employeeId = null; updateData.department = null; updateData.position = null; updateData.assignedDate = null; } await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData); await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
-  const handleReturnSubmit = async (fullConditionString, conditionStatus) => { const { asset, type } = returnModal; if (!asset) return; let newStatus = 'available'; if (conditionStatus === 'ชำรุด' || conditionStatus === 'สูญหาย') { newStatus = 'broken'; } else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } try { if (type === 'RETURN') { await updateDoc(doc(db, COLLECTION_NAME, asset.id), { status: newStatus, assignedTo: null, employeeId: null, department: null, position: null, assignedDate: null, isCentral: false, location: '', notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` }); await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); showNotification('รับคืนสำเร็จ'); } else if (type === 'CHANGE_OWNER') { await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } openAssignModal(asset); } } catch (error) { console.error(error); showNotification('Failed', 'error'); } finally { setReturnModal({ open: false, asset: null, type: 'RETURN' }); } };
+  
+  const handleReturnSubmit = async (fullConditionString, conditionStatus) => { 
+      const { asset, type } = returnModal; 
+      if (!asset) return; 
+      
+      let newStatus = 'available'; 
+      if (conditionStatus === 'ชำรุด') { newStatus = 'broken'; }
+      else if (conditionStatus === 'สูญหาย') { newStatus = 'lost'; } // Correct mapping
+      else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } 
+      
+      try { 
+          if (type === 'RETURN') { 
+              await updateDoc(doc(db, COLLECTION_NAME, asset.id), { 
+                  status: newStatus, 
+                  assignedTo: null, 
+                  employeeId: null, 
+                  department: null, 
+                  position: null, 
+                  assignedDate: null, 
+                  isCentral: false, 
+                  location: '',     
+                  notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` 
+              }); 
+              await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              showNotification('รับคืนสำเร็จ'); 
+          } else if (type === 'CHANGE_OWNER') { 
+              await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } 
+              openAssignModal(asset); 
+          } 
+      } catch (error) { 
+          console.error(error); 
+          showNotification('Failed', 'error'); 
+      } finally { 
+          setReturnModal({ open: false, asset: null, type: 'RETURN' }); 
+      } 
+  };
+  
   const handleDeleteSubmit = async (reason) => { const asset = deleteModal.asset; if (!asset) return; try { await deleteDoc(doc(db, COLLECTION_NAME, asset.id)); await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`); showNotification('ลบรายการสำเร็จ'); } catch (error) { console.error(error); showNotification('เกิดข้อผิดพลาดในการลบ', 'error'); } finally { setDeleteModal({ open: false, asset: null }); } };
   
   const onReturnClick = (asset) => { setReturnModal({ open: true, asset, type: 'RETURN' }); setOpenDropdownId(null); };
@@ -297,13 +331,23 @@ export default function App() {
 
   const filteredAssets = assets.filter(a => {
     const term = searchTerm.toLowerCase();
-    const matchSearch = a.name.toLowerCase().includes(term) || a.serialNumber.toLowerCase().includes(term) || (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) || (a.employeeId && a.employeeId.toLowerCase().includes(term)) || (a.location && a.location.toLowerCase().includes(term)); 
+    const matchSearch = 
+      a.name.toLowerCase().includes(term) || 
+      a.serialNumber.toLowerCase().includes(term) || 
+      (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
+      (a.employeeId && a.employeeId.toLowerCase().includes(term)) ||
+      (a.location && a.location.toLowerCase().includes(term)); 
+
     const matchCategory = filterCategory === 'all' || a.category === filterCategory;
     const matchStatus = filterStatus === 'all' || a.status === filterStatus;
     const matchBrand = filterBrand === 'all' || a.brand === filterBrand;
     const matchDepartment = filterDepartment === 'all' || a.department === filterDepartment;
     const matchPosition = filterPosition === 'all' || a.position === filterPosition;
-    let matchRental = true; if (filterRental === 'rental') matchRental = a.isRental === true; if (filterRental === 'owned') matchRental = !a.isRental;
+    
+    let matchRental = true;
+    if (filterRental === 'rental') matchRental = a.isRental === true;
+    if (filterRental === 'owned') matchRental = !a.isRental;
+
     return matchSearch && matchCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
   });
 
@@ -400,7 +444,6 @@ export default function App() {
                                 <div className="font-medium flex items-center gap-2">
                                   {asset.name} 
                                   {asset.brand && <span className="text-[10px] text-slate-500 font-normal bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{asset.brand}</span>}
-                                  {/* ✅ แสดง Tag เครื่องกลาง */}
                                   {asset.isCentral && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-0.5"><Building2 size={10}/> กลาง</span>}
                                   {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
                                 </div>
@@ -410,7 +453,6 @@ export default function App() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
                           <td className="px-6 py-4">
-                              {/* ✅ แก้ไขการแสดงผล: เช็ค isCentral ก่อน */}
                               {asset.isCentral ? (
                                   <div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>
                               ) : asset.status === 'assigned' ? (
@@ -427,31 +469,18 @@ export default function App() {
                                     <div className="py-1">
                                         <button onClick={() => { setHistoryModal({ open: true, asset: asset }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <History size={16} className="text-blue-600"/> ประวัติการใช้งาน </button>
                                         <div className="border-t border-slate-100 my-1"></div>
-                                        
-                                        {/* ✅ เครื่องกลาง: เปลี่ยนผู้ถือครอง หรือ รับคืน */}
                                         {asset.isCentral ? ( 
                                             <> 
                                                 <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <UserPlus size={16} style={{color: COLORS.primary}}/> เปลี่ยนเป็นพนักงานถือ </button> 
                                                 <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> ส่งคืนคลัง IT </button> 
                                             </> 
                                         ) : (
-                                            /* ✅ เครื่องพนักงาน: ตาม Logic เดิม */
                                             <>
-                                                {asset.status === 'available' && ( 
-                                                    <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> 
-                                                )}
-                                                
-                                                {asset.status === 'assigned' && ( 
-                                                    <> 
-                                                        <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> 
-                                                        <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> 
-                                                        <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> 
-                                                    </> 
-                                                )}
+                                                {asset.status === 'available' && ( <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> )}
+                                                {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
                                             </>
                                         )}
-
-                                        {(['broken','repair'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
+                                        {(['broken','repair','lost'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
                                         <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
                                         <div className="border-t border-slate-100 my-1"></div>
                                         <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
@@ -470,7 +499,7 @@ export default function App() {
             </div>
           </div>
         )}
-
+        
         {view === 'add' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
              <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
