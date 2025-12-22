@@ -13,10 +13,16 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
               <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อทรัพย์สิน</label>
               <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.name} onChange={e => setData({ ...data, name: e.target.value })} />
             </div>
+            {/* ✅ เพิ่มช่อง Brand */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
-              <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.serialNumber} onChange={e => setData({ ...data, serialNumber: e.target.value })} />
+              <label className="block text-sm font-medium text-slate-700 mb-1">ยี่ห้อ (Brand)</label>
+              <input type="text" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.brand || ''} onChange={e => setData({ ...data, brand: e.target.value })} placeholder="เช่น Apple, Dell" />
             </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
+            <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.serialNumber} onChange={e => setData({ ...data, serialNumber: e.target.value })} />
           </div>
 
           <div>

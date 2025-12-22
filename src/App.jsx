@@ -44,7 +44,7 @@ export default function App() {
   // สถานะสำหรับ Modals ต่างๆ
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
-  const [newAsset, setNewAsset] = useState({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
+  const [newAsset, setNewAsset] = useState({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
@@ -111,7 +111,25 @@ export default function App() {
   const lookupEmployee = (id) => { const emp = employees.find(e => e.id.toLowerCase() === id.toLowerCase()); if (emp) { setAssignModal(prev => ({ ...prev, empId: emp.id, empName: emp.name, empNickname: emp.nickname, empPosition: emp.position, empDept: emp.department, empStatus: emp.status })); } else { showNotification('ไม่พบรหัสพนักงาน', 'error'); } };
   const logActivity = async (action, assetData, details = '') => { if (!user) return; try { await addDoc(collection(db, LOGS_COLLECTION_NAME), { assetId: assetData.id, assetName: assetData.name, serialNumber: assetData.serialNumber, action: action, details: details, performedBy: user.email, timestamp: serverTimestamp() }); } catch (error) { console.error("Error logging activity:", error); } };
   
-  const handleAddAsset = async (e) => { e.preventDefault(); if (!user) return; try { const docRef = await addDoc(collection(db, COLLECTION_NAME), { ...newAsset, status: 'available', assignedTo: null, assignedDate: null, createdAt: serverTimestamp() }); await logActivity('CREATE', { id: docRef.id, ...newAsset }, 'เพิ่มทรัพย์สินเข้าระบบ'); setNewAsset({ name: '', serialNumber: '', category: 'laptop', notes: '', isRental: false }); setView('list'); showNotification('เพิ่มสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
+  const handleAddAsset = async (e) => { 
+    e.preventDefault(); 
+    if (!user) return; 
+    try { 
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), { 
+        ...newAsset, 
+        brand: newAsset.brand || '', 
+        status: 'available', 
+        assignedTo: null, 
+        assignedDate: null, 
+        createdAt: serverTimestamp() 
+      }); 
+      await logActivity('CREATE', { id: docRef.id, ...newAsset }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
+      setNewAsset({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false }); 
+      setView('list'); 
+      showNotification('เพิ่มสำเร็จ'); 
+    } catch { showNotification('Failed', 'error'); } 
+  };
+  
   const handleAssignSubmit = async (e) => { e.preventDefault(); if (assignModal.empStatus.includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return; try { const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName; await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { status: 'assigned', assignedTo: fullName, employeeId: assignModal.empId, department: assignModal.empDept, position: assignModal.empPosition, assignedDate: new Date().toISOString() }); await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `เบิกให้: ${fullName} (${assignModal.empDept})`); setAssignModal({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' }); showNotification('บันทึกสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
   const handleEditSubmit = async (e) => { e.preventDefault(); try { const updateData = { ...editModal.asset }; if (updateData.status !== 'assigned') { updateData.assignedTo = null; updateData.employeeId = null; updateData.department = null; updateData.position = null; updateData.assignedDate = null; } await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData); await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
   const handleReturnSubmit = async (fullConditionString, conditionStatus) => { const { asset, type } = returnModal; if (!asset) return; let newStatus = 'available'; if (conditionStatus === 'ชำรุด' || conditionStatus === 'สูญหาย') { newStatus = 'broken'; } else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } try { if (type === 'RETURN') { await updateDoc(doc(db, COLLECTION_NAME, asset.id), { status: newStatus, assignedTo: null, employeeId: null, department: null, position: null, assignedDate: null, notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` }); await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); showNotification('รับคืนสำเร็จ'); } else if (type === 'CHANGE_OWNER') { await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } openAssignModal(asset); } } catch (error) { console.error(error); showNotification('Failed', 'error'); } finally { setReturnModal({ open: false, asset: null, type: 'RETURN' }); } };
@@ -123,8 +141,15 @@ export default function App() {
   const handlePrintHandover = (asset) => { const printWindow = window.open('', '', 'width=900,height=800'); printWindow.document.write(generateHandoverHtml(asset)); printWindow.document.close(); setTimeout(() => printWindow.print(), 1000); };
   const openAssignModal = (asset) => { setAssignModal({ open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' }); setOpenDropdownId(null); };
 
+  // ✅ แก้ไขส่วน filterAssets ให้ค้นหาจาก employeeId ได้ด้วย
   const filteredAssets = assets.filter(a => {
-    const match = a.name.toLowerCase().includes(searchTerm.toLowerCase()) || a.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) || (a.assignedTo && a.assignedTo.toLowerCase().includes(searchTerm.toLowerCase()));
+    const term = searchTerm.toLowerCase();
+    const match = 
+      a.name.toLowerCase().includes(term) || 
+      a.serialNumber.toLowerCase().includes(term) || 
+      (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
+      (a.employeeId && a.employeeId.toLowerCase().includes(term)); // 👈 เพิ่มบรรทัดนี้
+
     return match && (filterCategory === 'all' || a.category === filterCategory);
   });
 
@@ -224,22 +249,22 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredAssets.map(asset => (
-                        <tr key={asset.id} className="hover:bg-slate-50 align-top"> {/* ✅ เพิ่ม align-top เพื่อให้ข้อความชิดบนเสมอ */}
+                        <tr key={asset.id} className="hover:bg-slate-50 align-top">
                           <td className="px-6 py-4">
                             <div className="flex gap-3">
                               <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
                               <div>
-                                <div className="font-medium flex gap-2">{asset.name} {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}</div>
+                                <div className="font-medium flex items-center gap-2">
+                                  {asset.name} 
+                                  {asset.brand && <span className="text-[10px] text-slate-500 font-normal bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{asset.brand}</span>}
+                                  {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
+                                </div>
                                 <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
                               </div>
                             </div>
                           </td>
-                          {/* ✅ แก้ไข: เพิ่ม whitespace-nowrap ให้สถานะไม่ตัดคำ */}
                           <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
-                          
                           <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
-                          
-                          {/* ✅ แก้ไข: กำหนด min-width ให้ตำแหน่งและแผนก เพื่อให้มีพื้นที่แสดงผล */}
                           <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
                           <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                           
@@ -274,11 +299,24 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto animate-fade-in">
              <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
              <form onSubmit={handleAddAsset} className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                 <div><label className="block text-sm font-medium mb-1">ชื่อทรัพย์สิน</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} /></div>
-                 <div><label className="block text-sm font-medium mb-1">Serial Number</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} /></div>
+               {/* ✅ ปรับ Grid ให้รองรับ Brand */}
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label className="block text-sm font-medium mb-1">ชื่อทรัพย์สิน</label>
+                    <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="เช่น MacBook Pro 14" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium mb-1">ยี่ห้อ (Brand)</label>
+                    <input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="เช่น Apple, Dell, Lenovo" />
+                 </div>
                </div>
-               <div className="flex items-center gap-2"><input type="checkbox" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> <label className="text-sm">เป็นเครื่องเช่า</label></div>
+               
+               <div>
+                  <label className="block text-sm font-medium mb-1">Serial Number</label>
+                  <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
+               </div>
+
+               <div className="flex items-center gap-2"><input type="checkbox" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> <label className="text-sm">เป็นเครื่องเช่า (Rental)</label></div>
                <div>
                  <label className="block text-sm font-medium mb-1">หมวดหมู่</label>
                  <div className="grid grid-cols-5 gap-2">{CATEGORIES.map(c => <button key={c.id} type="button" onClick={() => setNewAsset({...newAsset, category: c.id})} className={`p-3 border rounded text-xs flex flex-col items-center ${newAsset.category === c.id ? '' : 'hover:bg-slate-50'}`} style={newAsset.category === c.id ? {borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}10`, color: COLORS.primary} : {}}>{c.icon} {c.name}</button>)}</div>
