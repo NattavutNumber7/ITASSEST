@@ -1,5 +1,25 @@
-// เพิ่มการ import COMPANY_INFO
 import { LOGO_URL, COMPANY_INFO } from '../config.jsx';
+
+// ✅ ฟังก์ชันช่วยเติมเลข 0 ให้ครบ 5 หลัก (ปรับปรุงใหม่)
+const formatEmployeeId = (id) => {
+  if (!id) return '';
+  let cleanId = id.toString().trim();
+  
+  // ลบตัวอักษรที่ไม่ใช่ตัวเลขออก (เผื่อมี space หรือ invisible char)
+  // แต่ถ้า id เป็นตัวหนังสือผสมตัวเลข (เช่น A123) อาจจะไม่ต้องลบ
+  // สมมติว่ารหัสพนักงานควรเป็นตัวเลขล้วน 100%
+  
+  // ลองแปลงเป็นตัวเลขเพื่อเช็ค
+  if (!isNaN(cleanId) && cleanId !== '') {
+      // ถ้าเป็นตัวเลข (เช่น "1420", "2088") ให้เติม 0 ข้างหน้าจนครบ 5 หลัก (หรือ 6 ถ้าจำเป็น)
+      // ส่วนใหญ่รหัสพนักงาน 002088 คือ 6 หลัก หรือ 5 หลักครับ?
+      // จากตัวอย่าง "002088" ดูเหมือนจะเป็น 6 หลักนะครับ (ถ้า "01420" คือ 5)
+      // ขอตั้งเป็น padStart(6, '0') ไว้ก่อนเพื่อความปลอดภัย หรือคุณสามารถแก้เลข 6 เป็น 5 ได้ถ้าต้องการแค่ 5 หลัก
+      return cleanId.padStart(6, '0'); 
+  }
+  
+  return cleanId; // ถ้าไม่ใช่ตัวเลข (เช่น "IT-001") ให้คืนค่าเดิม
+};
 
 export const parseCSV = (text) => {
   if (!text) return [];
@@ -13,13 +33,38 @@ export const parseCSV = (text) => {
     if (cols.length < 5) return null;
 
     return {
-      id: cleanCol(cols[0]),
+      id: formatEmployeeId(cleanCol(cols[0])), // ✅ ใช้ formatEmployeeId
       name: cleanCol(cols[1]),
       nickname: cleanCol(cols[2]),
       department: cleanCol(cols[3]), 
       position: cleanCol(cols[4]),   
       email: cleanCol(cols[5]),
       status: cleanCol(cols[6]) || 'Active'
+    };
+  }).filter(item => item !== null);
+};
+
+// ✅ เพิ่มฟังก์ชันนี้สำหรับดึงข้อมูล Laptop
+export const parseLaptopCSV = (text) => {
+  if (!text) return [];
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return []; // ข้าม Header
+
+  return lines.slice(1).map(line => {
+    const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+    const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
+
+    // ลำดับคอลัมน์: 0=Brand, 1=Model(Name), 2=Serial, 3=EmployeeID
+    if (cols.length < 3) return null; 
+
+    return {
+      brand: cleanCol(cols[0]),
+      name: cleanCol(cols[1]),
+      serialNumber: cleanCol(cols[2]),
+      employeeId: formatEmployeeId(cleanCol(cols[3])), // ✅ ใช้ formatEmployeeId เพื่อเติม 00
+      category: 'laptop', // บังคับเป็น Laptop
+      isRental: false,
+      isCentral: false
     };
   }).filter(item => item !== null);
 };
@@ -36,7 +81,6 @@ export const generateHandoverHtml = (asset) => {
 
   const receiverName = asset.assignedTo || '.......................................................................';
 
-  // ใช้ข้อมูลจาก COMPANY_INFO แทนการ Hardcode ชื่อ
   return `
     <html>
       <head>
