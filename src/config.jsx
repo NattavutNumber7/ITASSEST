@@ -59,10 +59,11 @@ export const CATEGORIES = [
   { id: 'accessory', name: 'Accessory', icon: <Headphones size={18} /> },
 ];
 
-// ✅ สถานะของทรัพย์สิน
+// ✅ สถานะของทรัพย์สิน (เพิ่ม LOST)
 export const STATUSES = {
   AVAILABLE: { id: 'available', label: 'ว่าง (พร้อมใช้)', color: 'bg-[#008065]/10 text-[#008065] border-[#008065]/30' },
   ASSIGNED: { id: 'assigned', label: 'ใช้งานอยู่', color: 'bg-[#007c7c]/10 text-[#007c7c] border-[#007c7c]/30' },
   BROKEN: { id: 'broken', label: 'ชำรุด', color: 'bg-red-50 text-red-700 border-red-200' },
   REPAIR: { id: 'repair', label: 'ส่งซ่อม', color: 'bg-[#ff6600]/10 text-[#ff6600] border-[#ff6600]/30' },
+  LOST: { id: 'lost', label: 'สูญหาย', color: 'bg-slate-100 text-slate-600 border-slate-300' }, // เพิ่มสถานะ Lost
 };
