@@ -13,7 +13,6 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
               <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อทรัพย์สิน</label>
               <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.name} onChange={e => setData({ ...data, name: e.target.value })} />
             </div>
-            {/* ✅ เพิ่มช่อง Brand */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ยี่ห้อ (Brand)</label>
               <input type="text" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.brand || ''} onChange={e => setData({ ...data, brand: e.target.value })} placeholder="เช่น Apple, Dell" />
@@ -37,16 +36,42 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 py-1">
-            <input 
-              type="checkbox" 
-              id="editIsRental"
-              className="w-4 h-4 rounded border-slate-300"
-              style={{accentColor: COLORS.primary}}
-              checked={data.isRental || false}
-              onChange={(e) => setData({ ...data, isRental: e.target.checked })}
-            />
-            <label htmlFor="editIsRental" className="text-sm font-medium text-slate-700 cursor-pointer">เป็นเครื่องเช่า (Rental)</label>
+          <div className="flex flex-col gap-3 py-2 bg-slate-50 rounded-lg p-3 border border-slate-100">
+            <div className="flex items-center gap-2">
+                <input 
+                type="checkbox" 
+                id="editIsRental"
+                className="w-4 h-4 rounded border-slate-300"
+                style={{accentColor: COLORS.primary}}
+                checked={data.isRental || false}
+                onChange={(e) => setData({ ...data, isRental: e.target.checked })}
+                />
+                <label htmlFor="editIsRental" className="text-sm font-medium text-slate-700 cursor-pointer">เป็นเครื่องเช่า (Rental)</label>
+            </div>
+            <div className="flex items-center gap-2">
+                <input 
+                type="checkbox" 
+                id="editIsCentral"
+                className="w-4 h-4 rounded border-slate-300"
+                style={{accentColor: COLORS.primary}}
+                checked={data.isCentral || false}
+                onChange={(e) => setData({ ...data, isCentral: e.target.checked })}
+                />
+                <label htmlFor="editIsCentral" className="text-sm font-medium text-slate-700 cursor-pointer">เป็นเครื่องกลาง (Central)</label>
+            </div>
+             {/* ✅ ช่องกรอก Location จะแสดงเมื่อติ๊กเครื่องกลาง */}
+             {data.isCentral && (
+                   <div className="animate-fade-in pl-6">
+                        <input 
+                            type="text" 
+                            className="w-full px-3 py-1.5 border border-blue-200 bg-white rounded-lg focus:ring-1 outline-none text-sm text-slate-700 placeholder-slate-300" 
+                            style={{borderColor: COLORS.primary}}
+                            value={data.location || ''} 
+                            onChange={e => setData({...data, location: e.target.value})} 
+                            placeholder="ระบุคลัง / สถานที่ตั้ง..." 
+                        />
+                   </div>
+               )}
           </div>
 
           <div>

@@ -4,10 +4,10 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimest
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus } from 'lucide-react';
 
 // นำเข้า Config และ Components
-import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, COLORS, LOGO_URL } from './config.jsx';
+import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
@@ -30,7 +30,15 @@ export default function App() {
   const [loading, setLoading] = useState(true); 
   const [view, setView] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState(''); 
+  
+  // ตัวกรอง
   const [filterCategory, setFilterCategory] = useState('all'); 
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterBrand, setFilterBrand] = useState('all'); 
+  const [filterDepartment, setFilterDepartment] = useState('all');
+  const [filterPosition, setFilterPosition] = useState('all');
+  const [filterRental, setFilterRental] = useState('all'); 
+
   const [notification, setNotification] = useState(null); 
 
   // สถานะอื่นๆ
@@ -42,7 +50,7 @@ export default function App() {
   const dropdownRef = useRef(null);
 
   // สถานะสำหรับ Modals ต่างๆ
-  const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' });
+  const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
   const [newAsset, setNewAsset] = useState({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
@@ -121,6 +129,8 @@ export default function App() {
         status: 'available', 
         assignedTo: null, 
         assignedDate: null, 
+        isCentral: false, 
+        location: '',
         createdAt: serverTimestamp() 
       }); 
       await logActivity('CREATE', { id: docRef.id, ...newAsset }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
@@ -130,28 +140,135 @@ export default function App() {
     } catch { showNotification('Failed', 'error'); } 
   };
   
-  const handleAssignSubmit = async (e) => { e.preventDefault(); if (assignModal.empStatus.includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return; try { const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName; await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { status: 'assigned', assignedTo: fullName, employeeId: assignModal.empId, department: assignModal.empDept, position: assignModal.empPosition, assignedDate: new Date().toISOString() }); await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `เบิกให้: ${fullName} (${assignModal.empDept})`); setAssignModal({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' }); showNotification('บันทึกสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
+  const handleAssignSubmit = async (e, assignType) => { 
+    e.preventDefault();
+    
+    // โหมดพนักงาน
+    if (assignType === 'person') {
+        if (assignModal.empStatus.includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
+        try {
+          const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName;
+          await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
+            status: 'assigned', 
+            assignedTo: fullName, 
+            employeeId: assignModal.empId, 
+            department: assignModal.empDept, 
+            position: assignModal.empPosition, 
+            assignedDate: new Date().toISOString(),
+            isCentral: false, // เคลียร์สถานะเครื่องกลาง
+            location: '' 
+          });
+          await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `เบิกให้: ${fullName} (${assignModal.empDept})`);
+          setAssignModal({ ...assignModal, open: false }); 
+          showNotification('บันทึกสำเร็จ');
+        } catch { showNotification('Failed', 'error'); }
+
+    // โหมดเครื่องกลาง
+    } else if (assignType === 'central') {
+        try {
+            await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
+              status: 'assigned', // สถานะยังคงเป็น assigned (แต่ assigned ให้ Location)
+              assignedTo: `Central - ${assignModal.location}`, // แสดงชื่อ location ในช่องผู้ถือครอง
+              employeeId: null, 
+              department: null, 
+              position: null, 
+              assignedDate: new Date().toISOString(),
+              isCentral: true, // ✅ ระบุว่าเป็นเครื่องกลาง
+              location: assignModal.location 
+            });
+            await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `ตั้งเป็นเครื่องกลาง: ${assignModal.location}`);
+            setAssignModal({ ...assignModal, open: false }); 
+            showNotification('ตั้งเป็นเครื่องกลางสำเร็จ');
+          } catch { showNotification('Failed', 'error'); }
+    }
+  };
+
   const handleEditSubmit = async (e) => { e.preventDefault(); try { const updateData = { ...editModal.asset }; if (updateData.status !== 'assigned') { updateData.assignedTo = null; updateData.employeeId = null; updateData.department = null; updateData.position = null; updateData.assignedDate = null; } await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData); await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
-  const handleReturnSubmit = async (fullConditionString, conditionStatus) => { const { asset, type } = returnModal; if (!asset) return; let newStatus = 'available'; if (conditionStatus === 'ชำรุด' || conditionStatus === 'สูญหาย') { newStatus = 'broken'; } else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } try { if (type === 'RETURN') { await updateDoc(doc(db, COLLECTION_NAME, asset.id), { status: newStatus, assignedTo: null, employeeId: null, department: null, position: null, assignedDate: null, notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` }); await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); showNotification('รับคืนสำเร็จ'); } else if (type === 'CHANGE_OWNER') { await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } openAssignModal(asset); } } catch (error) { console.error(error); showNotification('Failed', 'error'); } finally { setReturnModal({ open: false, asset: null, type: 'RETURN' }); } };
+  
+  const handleReturnSubmit = async (fullConditionString, conditionStatus) => { 
+      const { asset, type } = returnModal; 
+      if (!asset) return; 
+      
+      let newStatus = 'available'; 
+      if (conditionStatus === 'ชำรุด' || conditionStatus === 'สูญหาย') { newStatus = 'broken'; } 
+      else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } 
+      
+      try { 
+          if (type === 'RETURN') { 
+              // ✅ กรณีรับคืน ไม่ว่าจะเป็นเครื่องคนหรือเครื่องกลาง ให้เคลียร์ค่าทั้งหมดกลับเป็น Available
+              await updateDoc(doc(db, COLLECTION_NAME, asset.id), { 
+                  status: newStatus, 
+                  assignedTo: null, 
+                  employeeId: null, 
+                  department: null, 
+                  position: null, 
+                  assignedDate: null, 
+                  isCentral: false, // เคลียร์สถานะเครื่องกลาง
+                  location: '',     // เคลียร์ Location
+                  notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` 
+              }); 
+              await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              showNotification('รับคืนสำเร็จ'); 
+          } else if (type === 'CHANGE_OWNER') { 
+              await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } 
+              openAssignModal(asset); 
+          } 
+      } catch (error) { 
+          console.error(error); 
+          showNotification('Failed', 'error'); 
+      } finally { 
+          setReturnModal({ open: false, asset: null, type: 'RETURN' }); 
+      } 
+  };
+  
   const handleDeleteSubmit = async (reason) => { const asset = deleteModal.asset; if (!asset) return; try { await deleteDoc(doc(db, COLLECTION_NAME, asset.id)); await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`); showNotification('ลบรายการสำเร็จ'); } catch (error) { console.error(error); showNotification('เกิดข้อผิดพลาดในการลบ', 'error'); } finally { setDeleteModal({ open: false, asset: null }); } };
   
   const onReturnClick = (asset) => { setReturnModal({ open: true, asset, type: 'RETURN' }); setOpenDropdownId(null); };
   const onChangeOwnerClick = (asset) => { setReturnModal({ open: true, asset, type: 'CHANGE_OWNER' }); setOpenDropdownId(null); };
   const onDeleteClick = (asset) => { setDeleteModal({ open: true, asset }); setOpenDropdownId(null); };
   const handlePrintHandover = (asset) => { const printWindow = window.open('', '', 'width=900,height=800'); printWindow.document.write(generateHandoverHtml(asset)); printWindow.document.close(); setTimeout(() => printWindow.print(), 1000); };
-  const openAssignModal = (asset) => { setAssignModal({ open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '' }); setOpenDropdownId(null); };
+  const openAssignModal = (asset) => { setAssignModal({ open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' }); setOpenDropdownId(null); };
 
-  // ✅ แก้ไขส่วน filterAssets ให้ค้นหาจาก employeeId ได้ด้วย
+  // Dropdown Options
+  const uniqueBrands = [...new Set(assets.map(a => a.brand).filter(Boolean))].sort();
+  const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
+  const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
+
+  // Filter Logic
   const filteredAssets = assets.filter(a => {
     const term = searchTerm.toLowerCase();
-    const match = 
+    const matchSearch = 
       a.name.toLowerCase().includes(term) || 
       a.serialNumber.toLowerCase().includes(term) || 
       (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
-      (a.employeeId && a.employeeId.toLowerCase().includes(term)); // 👈 เพิ่มบรรทัดนี้
+      (a.employeeId && a.employeeId.toLowerCase().includes(term)) ||
+      (a.location && a.location.toLowerCase().includes(term)); 
 
-    return match && (filterCategory === 'all' || a.category === filterCategory);
+    const matchCategory = filterCategory === 'all' || a.category === filterCategory;
+    const matchStatus = filterStatus === 'all' || a.status === filterStatus;
+    const matchBrand = filterBrand === 'all' || a.brand === filterBrand;
+    const matchDepartment = filterDepartment === 'all' || a.department === filterDepartment;
+    const matchPosition = filterPosition === 'all' || a.position === filterPosition;
+    
+    let matchRental = true;
+    if (filterRental === 'rental') matchRental = a.isRental === true;
+    if (filterRental === 'owned') matchRental = !a.isRental;
+
+    return matchSearch && matchCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
   });
+
+  const clearFilters = () => {
+    setFilterCategory('all');
+    setFilterStatus('all');
+    setFilterBrand('all');
+    setFilterDepartment('all');
+    setFilterPosition('all');
+    setFilterRental('all');
+    setSearchTerm('');
+  };
+
+  const isFiltered = filterCategory !== 'all' || filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
 
   // --- Render ---
   if (authLoading) return <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div><span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span></div></div>;
@@ -218,18 +335,109 @@ export default function App() {
         {/* ✅ List View */}
         {view === 'list' && (
           <div className="space-y-4 animate-fade-in">
+            {/* Search & Improved Filter Bar */}
             <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input type="text" placeholder="ค้นหา...(ชื่อทรัพย์สิน,รหัสพนักงาน,หมายเลขทรัพย์สิน" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all" style={{focusBorderColor: COLORS.primary}} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input 
+                  type="text" 
+                  placeholder="ค้นหา...(ชื่อทรัพย์สิน,รหัสพนักงาน,หมายเลขทรัพย์สิน" 
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all" 
+                  style={{focusBorderColor: COLORS.primary}}
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
-                <button onClick={() => setFilterCategory('all')} className={`px-4 py-2 rounded-lg text-sm border whitespace-nowrap ${filterCategory === 'all' ? 'text-white' : 'bg-white hover:bg-slate-50'}`} style={{backgroundColor: filterCategory === 'all' ? '#1e293b' : undefined}}>ทั้งหมด</button>
-                {CATEGORIES.map(cat => (
-                  <button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-2 rounded-lg text-sm border flex gap-2 whitespace-nowrap ${filterCategory === cat.id ? '' : 'bg-white hover:bg-slate-50'}`} style={filterCategory === cat.id ? {backgroundColor: `${COLORS.primary}10`, color: COLORS.primary, borderColor: `${COLORS.primary}20`} : {}}>
-                    {cat.icon} {cat.name}
-                  </button>
-                ))}
+              
+              {/* Filter Controls */}
+              <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto max-w-full">
+                  <div className="flex items-center gap-2 px-2 text-slate-400 shrink-0">
+                      <Filter size={16} />
+                      <span className="text-xs font-medium uppercase hidden sm:inline">Filter</span>
+                  </div>
+                  
+                  {/* Category */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterCategory} 
+                      onChange={(e) => setFilterCategory(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="หมวดหมู่"
+                  >
+                      <option value="all">ทุกหมวดหมู่</option>
+                      {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+
+                  {/* Brand */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterBrand} 
+                      onChange={(e) => setFilterBrand(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="ยี่ห้อ"
+                  >
+                      <option value="all">ทุกยี่ห้อ</option>
+                      {uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+
+                  {/* Department */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterDepartment} 
+                      onChange={(e) => setFilterDepartment(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="แผนก"
+                  >
+                      <option value="all">ทุกแผนก</option>
+                      {uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+
+                  {/* Position */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterPosition} 
+                      onChange={(e) => setFilterPosition(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="ตำแหน่ง"
+                  >
+                      <option value="all">ทุกตำแหน่ง</option>
+                      {uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+
+                  {/* Rental Filter */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterRental} 
+                      onChange={(e) => setFilterRental(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="ประเภทเครื่อง"
+                  >
+                      <option value="all">ทุกประเภท</option>
+                      <option value="owned">เครื่องบริษัท</option>
+                      <option value="rental">เครื่องเช่า</option>
+                  </select>
+
+                  {/* Status */}
+                  <div className="h-4 w-px bg-slate-300"></div>
+                  <select 
+                      value={filterStatus} 
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"
+                      title="สถานะ"
+                  >
+                      <option value="all">ทุกสถานะ</option>
+                      {Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+
+                  {isFiltered && (
+                      <button 
+                          onClick={clearFilters}
+                          className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors"
+                          title="ล้างตัวกรอง"
+                      >
+                          <X size={14} />
+                      </button>
+                  )}
               </div>
             </div>
 
@@ -248,7 +456,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredAssets.map(asset => (
+                      {filteredAssets.length > 0 ? filteredAssets.map(asset => (
                         <tr key={asset.id} className="hover:bg-slate-50 align-top">
                           <td className="px-6 py-4">
                             <div className="flex gap-3">
@@ -257,6 +465,8 @@ export default function App() {
                                 <div className="font-medium flex items-center gap-2">
                                   {asset.name} 
                                   {asset.brand && <span className="text-[10px] text-slate-500 font-normal bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{asset.brand}</span>}
+                                  {/* ✅ แสดง Tag เครื่องกลาง */}
+                                  {asset.isCentral && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-0.5"><Building2 size={10}/> กลาง</span>}
                                   {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
                                 </div>
                                 <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
@@ -264,7 +474,13 @@ export default function App() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
-                          <td className="px-6 py-4">{asset.status === 'assigned' ? <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div> : '-'}</td>
+                          <td className="px-6 py-4">
+                              {asset.status === 'assigned' ? (
+                                  <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>
+                              ) : asset.isCentral ? (
+                                  <div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>
+                              ) : '-'}
+                          </td>
                           <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
                           <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                           
@@ -275,9 +491,31 @@ export default function App() {
                                     <div className="py-1">
                                         <button onClick={() => { setHistoryModal({ open: true, asset: asset }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <History size={16} className="text-blue-600"/> ประวัติการใช้งาน </button>
                                         <div className="border-t border-slate-100 my-1"></div>
-                                        {asset.status === 'available' && ( <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> )}
-                                        {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
-                                        {(['broken','repair'].includes(asset.status)) && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
+                                        
+                                        {/* ✅ เครื่องกลาง: เปลี่ยนผู้ถือครอง หรือ รับคืน */}
+                                        {asset.isCentral ? ( 
+                                            <> 
+                                                <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <UserPlus size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> 
+                                                <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> ส่งคืน IT </button> 
+                                            </> 
+                                        ) : (
+                                            /* ✅ เครื่องพนักงาน: ตาม Logic เดิม */
+                                            <>
+                                                {asset.status === 'available' && ( 
+                                                    <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> 
+                                                )}
+                                                
+                                                {asset.status === 'assigned' && ( 
+                                                    <> 
+                                                        <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> 
+                                                        <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> 
+                                                        <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> 
+                                                    </> 
+                                                )}
+                                            </>
+                                        )}
+
+                                        {(['broken','repair'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
                                         <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
                                         <div className="border-t border-slate-100 my-1"></div>
                                         <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
@@ -286,7 +524,13 @@ export default function App() {
                              )}
                           </td>
                         </tr>
-                      ))}
+                      )) : (
+                        <tr>
+                            <td colSpan="6" className="px-6 py-12 text-center text-slate-400">
+                                ไม่พบข้อมูลที่ค้นหา
+                            </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -316,7 +560,11 @@ export default function App() {
                   <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
                </div>
 
-               <div className="flex items-center gap-2"><input type="checkbox" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> <label className="text-sm">เป็นเครื่องเช่า (Rental)</label></div>
+               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                   <input type="checkbox" id="isRental" className="w-4 h-4" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> 
+                   <label htmlFor="isRental" className="text-sm cursor-pointer select-none">เป็นเครื่องเช่า (Rental)</label>
+               </div>
+
                <div>
                  <label className="block text-sm font-medium mb-1">หมวดหมู่</label>
                  <div className="grid grid-cols-5 gap-2">{CATEGORIES.map(c => <button key={c.id} type="button" onClick={() => setNewAsset({...newAsset, category: c.id})} className={`p-3 border rounded text-xs flex flex-col items-center ${newAsset.category === c.id ? '' : 'hover:bg-slate-50'}`} style={newAsset.category === c.id ? {borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}10`, color: COLORS.primary} : {}}>{c.icon} {c.name}</button>)}</div>
