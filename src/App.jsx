@@ -184,14 +184,23 @@ export default function App() {
                         assignedDate: new Date().toISOString()
                     };
                 }
+            } else if (item.isCentral && item.location) { 
+                // ✅ เพิ่มเงื่อนไข: ถ้าเป็นเครื่องกลาง ให้บันทึกชื่อเป็น Central - [Location]
+                assigneeInfo = {
+                    assignedTo: `Central - ${item.location}`,
+                    employeeId: null,
+                    department: null,
+                    position: null,
+                    assignedDate: new Date().toISOString()
+                };
             }
 
             const dataToSave = {
                 ...item,
                 ...assigneeInfo,
                 status: finalStatus, 
-                isCentral: false, 
-                location: ''
+                isCentral: item.isCentral || false, // ✅ ใช้ค่าจาก Parser
+                location: item.location || ''       // ✅ ใช้ค่าจาก Parser
             };
 
             if (existingAssetsMap.has(item.serialNumber)) {
