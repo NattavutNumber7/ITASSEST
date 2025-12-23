@@ -26,9 +26,9 @@ export const LOGS_COLLECTION_NAME = 'asset_logs';
 export const ORIGINAL_DOC_URL = import.meta.env.VITE_ORIGINAL_DOC_URL || "#";
 
 export const COMPANY_INFO = {
-  companyName: import.meta.env.VITE_COMPANY_NAME || "บริษัท โพลาร์ แบร์ มิชชั่น จำกัด",
-  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME || "นายชัยวัฒน์ อมรรุ่งศิริ",
-  witnessName: import.meta.env.VITE_WITNESS_NAME || "นายณัฐวุฒิ ลามันจิตร์"
+  companyName: import.meta.env.VITE_COMPANY_NAME,
+  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME,
+  witnessName: import.meta.env.VITE_WITNESS_NAME 
 };
 
 export const LOGO_URL = "/FRESHKET LOGO-01.png";

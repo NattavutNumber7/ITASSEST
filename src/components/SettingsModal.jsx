@@ -1,15 +1,42 @@
-import React from 'react';
-import { Settings, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Download, AlertTriangle } from 'lucide-react';
 import { COLORS } from '../config.jsx';
 
 const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, setLaptopSheetUrl, onSave, onSyncLaptops, isSyncing, isSyncingLaptops }) => {
+  const [error, setError] = useState('');
+
   if (!show) return null;
+
+  // 🔒 SECURITY FIX: ฟังก์ชันตรวจสอบ URL
+  const validateAndSave = () => {
+    setError('');
+    
+    const isValidGoogleSheet = (url) => {
+        if (!url) return true; // อนุญาตให้ว่างได้ถ้ายังไม่ใส่
+        // ต้องเป็น HTTPS และมาจาก docs.google.com เท่านั้น
+        return url.startsWith('https://docs.google.com/spreadsheets/');
+    };
+
+    if (!isValidGoogleSheet(sheetUrl) || !isValidGoogleSheet(laptopSheetUrl)) {
+        setError('ลิงก์ต้องเป็น Google Sheets URL ที่ถูกต้อง (ขึ้นต้นด้วย https://docs.google.com/spreadsheets/)');
+        return;
+    }
+
+    onSave();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6" style={{backgroundColor: COLORS.white}}>
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in" style={{backgroundColor: COLORS.white}}>
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{color: COLORS.primary}}>
           <Settings size={20}/> การตั้งค่าและเชื่อมต่อข้อมูล
         </h3>
+        
+        {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 text-xs rounded-lg flex items-center gap-2 border border-red-200">
+                <AlertTriangle size={16} /> {error}
+            </div>
+        )}
         
         <div className="space-y-6">
           {/* ส่วนข้อมูลพนักงาน */}
@@ -22,7 +49,10 @@ const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, s
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 transition-all"
                   style={{focusBorderColor: COLORS.primary}}
                   value={sheetUrl} 
-                  onChange={(e) => setSheetUrl(e.target.value)}
+                  onChange={(e) => {
+                      setSheetUrl(e.target.value);
+                      setError('');
+                  }}
                   placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv"
                 />
             </div>
@@ -43,7 +73,10 @@ const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, s
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 transition-all"
                       style={{focusBorderColor: COLORS.primary}}
                       value={laptopSheetUrl} 
-                      onChange={(e) => setLaptopSheetUrl(e.target.value)}
+                      onChange={(e) => {
+                          setLaptopSheetUrl(e.target.value);
+                          setError('');
+                      }}
                       placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv"
                     />
                     <button 
@@ -61,7 +94,7 @@ const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, s
           <div className="flex justify-end gap-3 pt-4 border-t mt-2">
             <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm">ปิด</button>
             <button 
-              onClick={onSave} 
+              onClick={validateAndSave} 
               disabled={isSyncing} 
               className="px-4 py-2 text-white rounded-lg transition-colors shadow-sm disabled:opacity-70 text-sm"
               style={{backgroundColor: COLORS.primary}}
