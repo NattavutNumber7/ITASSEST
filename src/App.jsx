@@ -66,6 +66,12 @@ export default function App() {
   const [showDeletedLog, setShowDeletedLog] = useState(false); 
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
+  // 🛡️ Security: Helper function to sanitize input strings
+  const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return input;
+    return input.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  };
+
   // --- Effects (Auth & Firestore Listener) ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -134,6 +140,11 @@ export default function App() {
 
   // --- Handlers ---
   const handleSaveSettings = () => { 
+      // 🛡️ Validate URLs before saving
+      if (sheetUrl && !sheetUrl.startsWith('https://docs.google.com/')) {
+          showNotification('ลิงก์ Google Sheet ไม่ถูกต้อง', 'error');
+          return;
+      }
       localStorage.setItem('it_asset_sheet_url', sheetUrl); 
       localStorage.setItem('it_asset_laptop_sheet_url', laptopSheetUrl); 
       showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว'); 
@@ -255,24 +266,48 @@ export default function App() {
     }
   };
 
-  const lookupEmployee = (id) => { const emp = employees.find(e => e.id.toLowerCase() === id.toLowerCase()); if (emp) { setAssignModal(prev => ({ ...prev, empId: emp.id, empName: emp.name, empNickname: emp.nickname, empPosition: emp.position, empDept: emp.department, empStatus: emp.status })); } else { showNotification('ไม่พบรหัสพนักงาน', 'error'); } };
+  const lookupEmployee = (id) => { 
+      // 🛡️ Sanitize employee ID input
+      const safeId = sanitizeInput(id);
+      const emp = employees.find(e => e.id.toLowerCase() === safeId.toLowerCase()); 
+      if (emp) { 
+          setAssignModal(prev => ({ 
+              ...prev, 
+              empId: emp.id, 
+              empName: emp.name, 
+              empNickname: emp.nickname, 
+              empPosition: emp.position, 
+              empDept: emp.department, 
+              empStatus: emp.status 
+          })); 
+      } else { 
+          showNotification('ไม่พบรหัสพนักงาน', 'error'); 
+      } 
+  };
+
   const logActivity = async (action, assetData, details = '') => { if (!user) return; try { await addDoc(collection(db, LOGS_COLLECTION_NAME), { assetId: assetData.id, assetName: assetData.name, serialNumber: assetData.serialNumber, action: action, details: details, performedBy: user.email, timestamp: serverTimestamp() }); } catch (error) { console.error("Error logging activity:", error); } };
   
   const handleAddAsset = async (e) => { 
     e.preventDefault(); 
     if (!user) return; 
     try { 
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), { 
-        ...newAsset, 
-        brand: newAsset.brand || '', 
-        status: 'available', 
-        assignedTo: null, 
-        assignedDate: null, 
-        isCentral: false, 
-        location: '',
-        createdAt: serverTimestamp() 
-      }); 
-      await logActivity('CREATE', { id: docRef.id, ...newAsset }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
+      // 🛡️ Sanitize Inputs
+      const safeData = {
+          ...newAsset,
+          name: sanitizeInput(newAsset.name),
+          brand: sanitizeInput(newAsset.brand || ''),
+          serialNumber: sanitizeInput(newAsset.serialNumber),
+          notes: sanitizeInput(newAsset.notes || ''),
+          status: 'available', 
+          assignedTo: null, 
+          assignedDate: null, 
+          isCentral: false, 
+          location: '',
+          createdAt: serverTimestamp() 
+      };
+
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), safeData); 
+      await logActivity('CREATE', { id: docRef.id, ...safeData }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
       setNewAsset({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false }); 
       setView('list'); 
       showNotification('เพิ่มสำเร็จ'); 
@@ -301,23 +336,51 @@ export default function App() {
         } catch { showNotification('Failed', 'error'); }
     } else if (assignType === 'central') {
         try {
+            // 🛡️ Sanitize location
+            const safeLocation = sanitizeInput(assignModal.location);
             await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
                 status: 'assigned', 
-                assignedTo: `Central - ${assignModal.location}`, 
+                assignedTo: `Central - ${safeLocation}`, 
                 employeeId: null, 
                 department: null, 
                 position: null, 
                 assignedDate: new Date().toISOString(), 
                 isCentral: true, 
-                location: assignModal.location 
+                location: safeLocation 
             });
-            await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `ตั้งเป็นเครื่องกลาง: ${assignModal.location}`);
+            await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `ตั้งเป็นเครื่องกลาง: ${safeLocation}`);
             setAssignModal({ ...assignModal, open: false }); showNotification('ตั้งเป็นเครื่องกลางสำเร็จ');
           } catch { showNotification('Failed', 'error'); }
     }
   };
 
-  const handleEditSubmit = async (e) => { e.preventDefault(); try { const updateData = { ...editModal.asset }; if (updateData.status !== 'assigned') { updateData.assignedTo = null; updateData.employeeId = null; updateData.department = null; updateData.position = null; updateData.assignedDate = null; } await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData); await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
+  const handleEditSubmit = async (e) => { 
+      e.preventDefault(); 
+      try { 
+          // 🛡️ Sanitize Inputs on Edit
+          const updateData = { 
+              ...editModal.asset,
+              name: sanitizeInput(editModal.asset.name),
+              brand: sanitizeInput(editModal.asset.brand),
+              serialNumber: sanitizeInput(editModal.asset.serialNumber),
+              notes: sanitizeInput(editModal.asset.notes),
+              location: sanitizeInput(editModal.asset.location || '')
+          }; 
+          
+          if (updateData.status !== 'assigned') { 
+              updateData.assignedTo = null; 
+              updateData.employeeId = null; 
+              updateData.department = null; 
+              updateData.position = null; 
+              updateData.assignedDate = null; 
+          } 
+          
+          await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), updateData); 
+          await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); 
+          setEditModal({ open: false, asset: null }); 
+          showNotification('แก้ไขสำเร็จ'); 
+      } catch { showNotification('Failed', 'error'); } 
+  };
   
   const handleReturnSubmit = async (fullConditionString, conditionStatus) => { 
       const { asset, type } = returnModal; 
@@ -330,6 +393,9 @@ export default function App() {
       else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } // เพิ่ม
       
       try { 
+          // 🛡️ Sanitize Notes/Conditions
+          const safeCondition = sanitizeInput(fullConditionString);
+
           if (type === 'RETURN') { 
               await updateDoc(doc(db, COLLECTION_NAME, asset.id), { 
                   status: newStatus, 
@@ -340,12 +406,12 @@ export default function App() {
                   assignedDate: null, 
                   isCentral: false, 
                   location: '',     
-                  notes: asset.notes ? `${asset.notes} | คืน: ${fullConditionString}` : `คืน: ${fullConditionString}` 
+                  notes: asset.notes ? `${asset.notes} | คืน: ${safeCondition}` : `คืน: ${safeCondition}` 
               }); 
-              await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${safeCondition})`); 
               showNotification('รับคืนสำเร็จ'); 
           } else if (type === 'CHANGE_OWNER') { 
-              await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${fullConditionString})`); 
+              await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${safeCondition})`); 
               if (newStatus !== 'available') { alert(`คำเตือน: ทรัพย์สินมีสถานะ "${conditionStatus}" แต่คุณกำลังจะส่งมอบต่อ`); } 
               openAssignModal(asset); 
           } 
@@ -361,15 +427,18 @@ export default function App() {
     const asset = deleteModal.asset; 
     if (!asset) return; 
     try { 
-        // 🔄 Change to Soft Delete: Update 'isDeleted' flag instead of deleting document
+        // 🛡️ Sanitize Reason
+        const safeReason = sanitizeInput(reason);
+
+        // 🔄 Soft Delete: Update 'isDeleted' flag instead of deleting document
         await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
             isDeleted: true,
             deletedAt: new Date().toISOString(),
             deletedBy: user.email,
-            deleteReason: reason
+            deleteReason: safeReason
         });
         
-        await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`); 
+        await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${safeReason})`); 
         showNotification('ลบรายการสำเร็จ (ย้ายไปถังขยะ)'); 
     } catch (error) { 
         console.error(error); 
