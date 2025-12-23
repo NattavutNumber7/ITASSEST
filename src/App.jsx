@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-// นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/firestore
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore'; 
+import React, { useState, useEffect, useRef, useMemo } from 'react'; // ✅ เพิ่ม useMemo
+// นำเข้า writeBatch มาเพิ่มเพื่อทำ Atomic Operation
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch } from 'firebase/firestore'; 
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
@@ -19,7 +19,7 @@ import ReturnModal from './components/ReturnModal.jsx';
 import DeleteModal from './components/DeleteModal.jsx';
 import DeletedLogModal from './components/DeletedLogModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import BulkEditModal from './components/BulkEditModal.jsx'; // ✅ เพิ่ม Import
+import BulkEditModal from './components/BulkEditModal.jsx'; 
 
 export default function App() {
   // --- สถานะ (States) ---
@@ -64,13 +64,14 @@ export default function App() {
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
   const [showDeletedLog, setShowDeletedLog] = useState(false); 
-  const [bulkEditModal, setBulkEditModal] = useState({ open: false }); // ✅ เพิ่ม State Modal
+  const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   // --- Effects (Auth & Firestore Listener) ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
+        // 🔒 Note: การเช็คตรงนี้เป็น Client-side security ควรทำ Firestore Rules ด้วย
         if (!userEmail.endsWith('@freshket.co')) {
            console.warn("Access Denied: Email domain not allowed");
            setLoginError({ text: 'ขออภัย ระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น', timestamp: Date.now() });
@@ -102,12 +103,14 @@ export default function App() {
     }
     const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setAssets(items);
+      // 🛡️ Filter Soft Deleted items out from main view (กรองรายการที่ถูก Soft Delete ออก)
+      const activeItems = items.filter(item => !item.isDeleted);
+      activeItems.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setAssets(activeItems);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching data:", error);
-      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
+      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied หรือ Network Error)', 'error');
       setLoading(false);
     });
     return () => unsubscribeSnapshot();
@@ -163,10 +166,14 @@ export default function App() {
         const text = await res.text();
         const laptopData = parseLaptopCSV(text);
         
+        // 🚀 Optimization: ใช้ Batch write สำหรับ Sync จำนวนมาก
+        const batch = writeBatch(db);
         const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
         
         let addedCount = 0;
         let updatedCount = 0;
+        let operationCount = 0;
+        const BATCH_LIMIT = 500; // Firestore limit per batch
         
         for (const item of laptopData) {
             const finalStatus = item.status; 
@@ -214,15 +221,28 @@ export default function App() {
 
             if (existingAssetsMap.has(item.serialNumber)) {
                 const existingAsset = existingAssetsMap.get(item.serialNumber);
-                await updateDoc(doc(db, COLLECTION_NAME, existingAsset.id), dataToSave);
+                const docRef = doc(db, COLLECTION_NAME, existingAsset.id);
+                batch.update(docRef, dataToSave);
                 updatedCount++;
             } else {
-                await addDoc(collection(db, COLLECTION_NAME), {
+                const docRef = doc(collection(db, COLLECTION_NAME));
+                batch.set(docRef, {
                     ...dataToSave,
                     createdAt: serverTimestamp()
                 });
                 addedCount++;
             }
+            operationCount++;
+
+            // ถ้าเกิน Limit ให้ commit แล้วเริ่ม batch ใหม่ (กรณีข้อมูลเยอะมาก)
+            if (operationCount >= BATCH_LIMIT) {
+                await batch.commit();
+                operationCount = 0;
+            }
+        }
+        
+        if (operationCount > 0) {
+            await batch.commit();
         }
         
         showNotification(`Sync เสร็จสิ้น: เพิ่ม ${addedCount}, อัปเดต ${updatedCount} รายการ`);
@@ -262,7 +282,8 @@ export default function App() {
   const handleAssignSubmit = async (e, assignType) => { 
     e.preventDefault();
     if (assignType === 'person') {
-        if (assignModal.empStatus.includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
+        // 🛡️ Fix: ใช้ Optional chaining ป้องกัน Crash กรณี empStatus เป็น null
+        if (assignModal.empStatus?.toLowerCase().includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
         try {
           const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName;
           await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
@@ -336,7 +357,27 @@ export default function App() {
       } 
   };
   
-  const handleDeleteSubmit = async (reason) => { const asset = deleteModal.asset; if (!asset) return; try { await deleteDoc(doc(db, COLLECTION_NAME, asset.id)); await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`); showNotification('ลบรายการสำเร็จ'); } catch (error) { console.error(error); showNotification('เกิดข้อผิดพลาดในการลบ', 'error'); } finally { setDeleteModal({ open: false, asset: null }); } };
+  const handleDeleteSubmit = async (reason) => { 
+    const asset = deleteModal.asset; 
+    if (!asset) return; 
+    try { 
+        // 🔄 Change to Soft Delete: Update 'isDeleted' flag instead of deleting document
+        await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
+            isDeleted: true,
+            deletedAt: new Date().toISOString(),
+            deletedBy: user.email,
+            deleteReason: reason
+        });
+        
+        await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${reason})`); 
+        showNotification('ลบรายการสำเร็จ (ย้ายไปถังขยะ)'); 
+    } catch (error) { 
+        console.error(error); 
+        showNotification('เกิดข้อผิดพลาดในการลบ', 'error'); 
+    } finally { 
+        setDeleteModal({ open: false, asset: null }); 
+    } 
+  };
   
   const onReturnClick = (asset) => { setReturnModal({ open: true, asset, type: 'RETURN' }); setOpenDropdownId(null); };
   const onChangeOwnerClick = (asset) => { setReturnModal({ open: true, asset, type: 'CHANGE_OWNER' }); setOpenDropdownId(null); };
@@ -364,15 +405,30 @@ export default function App() {
     if (!confirm(`คุณต้องการเปลี่ยน "${label}" สำหรับรายการที่เลือกจำนวน ${selectedIds.size} รายการ ใช่หรือไม่?`)) return;
 
     try {
-      const batchPromises = Array.from(selectedIds).map(async (id) => {
-        const asset = assets.find(a => a.id === id);
-        if (!asset) return;
+      const batch = writeBatch(db); // 🔒 ใช้ Batch Write เพื่อความเสถียร
+      const timestamp = serverTimestamp();
+
+      Array.from(selectedIds).forEach((id) => {
+        const docRef = doc(db, COLLECTION_NAME, id);
+        batch.update(docRef, { [field]: value });
         
-        await updateDoc(doc(db, COLLECTION_NAME, id), { [field]: value });
-        await logActivity('BULK_EDIT', asset, `[Bulk Action] เปลี่ยน ${field} เป็น ${value}`);
+        // Log Activity สำหรับแต่ละรายการ
+        const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
+        const asset = assets.find(a => a.id === id);
+        if (asset) {
+            batch.set(logRef, {
+                assetId: asset.id,
+                assetName: asset.name,
+                serialNumber: asset.serialNumber,
+                action: 'BULK_EDIT',
+                details: `[Bulk Action] เปลี่ยน ${field} เป็น ${value}`,
+                performedBy: user.email,
+                timestamp: timestamp
+            });
+        }
       });
 
-      await Promise.all(batchPromises);
+      await batch.commit(); // ทำงานทีเดียวพร้อมกัน
       showNotification('บันทึกการแก้ไขหมู่เรียบร้อยแล้ว');
       setSelectedIds(new Set());
     } catch (error) {
@@ -384,10 +440,14 @@ export default function App() {
   // ✅ ฟังก์ชันอัปเดตสถานะแบบกลุ่ม (รับค่าจาก Modal)
   const handleBulkStatusChange = async (newStatus) => {
     try {
-      const batchPromises = Array.from(selectedIds).map(async (id) => {
+      const batch = writeBatch(db); // 🔒 ใช้ Batch Write
+      const timestamp = serverTimestamp();
+
+      Array.from(selectedIds).forEach((id) => {
         const asset = assets.find(a => a.id === id);
         if (!asset) return;
 
+        const docRef = doc(db, COLLECTION_NAME, id);
         const updateData = { status: newStatus };
         
         // ถ้าสถานะไม่ใช่ assigned ให้เคลียร์ข้อมูลผู้ถือครอง
@@ -401,11 +461,22 @@ export default function App() {
             updateData.location = '';
         }
 
-        await updateDoc(doc(db, COLLECTION_NAME, id), updateData);
-        await logActivity('BULK_STATUS_CHANGE', asset, `[Bulk Action] เปลี่ยนสถานะเป็น ${newStatus}`);
+        batch.update(docRef, updateData);
+
+        // Add Log
+        const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
+        batch.set(logRef, {
+            assetId: asset.id,
+            assetName: asset.name,
+            serialNumber: asset.serialNumber,
+            action: 'BULK_STATUS_CHANGE',
+            details: `[Bulk Action] เปลี่ยนสถานะเป็น ${newStatus}`,
+            performedBy: user.email,
+            timestamp: timestamp
+        });
       });
 
-      await Promise.all(batchPromises);
+      await batch.commit();
       showNotification(`เปลี่ยนสถานะเป็น ${newStatus} เรียบร้อยแล้ว`);
       setBulkEditModal({ open: false });
       setSelectedIds(new Set());
@@ -419,15 +490,36 @@ export default function App() {
     if (!confirm(`⚠️ คำเตือน: คุณกำลังจะลบ ${selectedIds.size} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันการลบ?`)) return;
 
     try {
-      const batchPromises = Array.from(selectedIds).map(async (id) => {
+      const batch = writeBatch(db); // 🔒 ใช้ Batch Write
+      const timestamp = serverTimestamp();
+
+      Array.from(selectedIds).forEach((id) => {
         const asset = assets.find(a => a.id === id);
         if (!asset) return;
         
-        await deleteDoc(doc(db, COLLECTION_NAME, id));
-        await logActivity('DELETE', asset, `[Bulk Action] ลบรายการออกจากระบบ`);
+        const docRef = doc(db, COLLECTION_NAME, id);
+        // 🔄 Soft Delete for Bulk Action
+        batch.update(docRef, {
+            isDeleted: true,
+            deletedAt: new Date().toISOString(),
+            deletedBy: user.email,
+            deleteReason: '[Bulk Delete]'
+        });
+
+        // Add Log
+        const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
+        batch.set(logRef, {
+            assetId: asset.id,
+            assetName: asset.name,
+            serialNumber: asset.serialNumber,
+            action: 'DELETE',
+            details: `[Bulk Action] ลบรายการออกจากระบบ`,
+            performedBy: user.email,
+            timestamp: timestamp
+        });
       });
 
-      await Promise.all(batchPromises);
+      await batch.commit();
       showNotification('ลบรายการที่เลือกเรียบร้อยแล้ว');
       setSelectedIds(new Set());
     } catch (error) {
@@ -440,27 +532,30 @@ export default function App() {
   const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
   const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
 
-  const filteredAssets = assets.filter(a => {
-    const term = searchTerm.toLowerCase();
-    const matchSearch = 
-      a.name.toLowerCase().includes(term) || 
-      a.serialNumber.toLowerCase().includes(term) || 
-      (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
-      (a.employeeId && a.employeeId.toLowerCase().includes(term)) ||
-      (a.location && a.location.toLowerCase().includes(term)); 
-
-    const matchCategory = filterCategory === 'all' || a.category === filterCategory;
-    const matchStatus = filterStatus === 'all' || a.status === filterStatus;
-    const matchBrand = filterBrand === 'all' || a.brand === filterBrand;
-    const matchDepartment = filterDepartment === 'all' || a.department === filterDepartment;
-    const matchPosition = filterPosition === 'all' || a.position === filterPosition;
+  // 🚀 Optimization: ใช้ useMemo เพื่อป้องกันการคำนวณซ้ำโดยไม่จำเป็น
+  const filteredAssets = useMemo(() => {
+    return assets.filter(a => {
+        const term = searchTerm.toLowerCase();
+        const matchSearch = 
+          a.name.toLowerCase().includes(term) || 
+          a.serialNumber.toLowerCase().includes(term) || 
+          (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
+          (a.employeeId && a.employeeId.toLowerCase().includes(term)) ||
+          (a.location && a.location.toLowerCase().includes(term)); 
     
-    let matchRental = true;
-    if (filterRental === 'rental') matchRental = a.isRental === true;
-    if (filterRental === 'owned') matchRental = !a.isRental;
-
-    return matchSearch && matchCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
-  });
+        const matchCategory = filterCategory === 'all' || a.category === filterCategory;
+        const matchStatus = filterStatus === 'all' || a.status === filterStatus;
+        const matchBrand = filterBrand === 'all' || a.brand === filterBrand;
+        const matchDepartment = filterDepartment === 'all' || a.department === filterDepartment;
+        const matchPosition = filterPosition === 'all' || a.position === filterPosition;
+        
+        let matchRental = true;
+        if (filterRental === 'rental') matchRental = a.isRental === true;
+        if (filterRental === 'owned') matchRental = !a.isRental;
+    
+        return matchSearch && matchCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
+      });
+  }, [assets, searchTerm, filterCategory, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental]);
 
   const clearFilters = () => { setFilterCategory('all'); setFilterStatus('all'); setFilterBrand('all'); setFilterDepartment('all'); setFilterPosition('all'); setFilterRental('all'); setSearchTerm(''); };
   const isFiltered = filterCategory !== 'all' || filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
