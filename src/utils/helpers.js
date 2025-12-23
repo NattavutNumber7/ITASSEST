@@ -35,7 +35,7 @@ export const parseCSV = (text) => {
   }).filter(item => item !== null);
 };
 
-// ✅ ฟังก์ชันสำหรับดึงข้อมูล Laptop (ปรับปรุง Logic เครื่องกลาง และ Column E)
+// ✅ ฟังก์ชันสำหรับดึงข้อมูล Laptop (ปรับปรุง Logic สถานะให้แม่นยำขึ้น)
 export const parseLaptopCSV = (text) => {
   if (!text) return [];
   const lines = text.split('\n').filter(l => l.trim());
@@ -51,41 +51,41 @@ export const parseLaptopCSV = (text) => {
     const name = cleanCol(cols[1]);
     const serialNumber = cleanCol(cols[2]);
     const employeeId = formatEmployeeId(cleanCol(cols[3]));
-    const location = cleanCol(cols[4]); // ✅ เพิ่มการอ่าน Column E (ชื่อคลัง/สถานที่)
+    const location = cleanCol(cols[4]); // อ่าน Column E (ชื่อคลัง/สถานที่)
     
-    // ดึงค่า Status จาก Column J (Index 9)
     let rawStatus = cols.length > 9 ? cleanCol(cols[9]) : ''; 
+    const s = rawStatus.toLowerCase().trim();
     
-    let status = 'available'; // Default
+    let status = 'available'; 
     let isCentral = false;
 
-    // ✅ Logic การแมปสถานะ (ยึดตาม Column J เป็นหลัก)
-    if (rawStatus) {
-        const s = rawStatus.toLowerCase().trim();
-        
-        if (s.includes('lost')) {
-            status = 'lost';
-        } else if (s.includes('damaged')) {
-            status = 'broken';
-        } else if (s.includes('pending') || s.includes('repair')) {
-            status = 'repair';
-        } else if (s.includes('active') && s.includes('stock')) {
-            status = 'available';
-        } else if (s.includes('active')) {
-            status = 'assigned';
-        } else {
-            // กรณีอื่นๆ หรือไม่ระบุ ให้ดูว่ามีเจ้าของ (Employee) หรือ ที่อยู่ (Location) หรือไม่
-            status = (employeeId || location) ? 'assigned' : 'available';
-        }
+    // ✅ Logic ใหม่: เรียงลำดับความสำคัญให้ถูกต้อง
+    // 1. ตรวจสอบสถานะเชิงลบก่อน (หาย, เสีย, ซ่อม)
+    if (s.includes('lost')) {
+        status = 'lost';
+    } else if (s.includes('damaged') || s.includes('broken') || s.includes('write-off')) {
+        status = 'broken';
+    } else if (s.includes('pending') || s.includes('repair')) {
+        status = 'repair';
     } else {
-        // Fallback กรณีไม่มีข้อมูล Column J
-        status = (employeeId || location) ? 'assigned' : 'available';
-    }
-
-    // ✅ กำหนดว่าเป็นเครื่องกลางหรือไม่ 
-    // เงื่อนไข: สถานะต้องเป็น Assigned + ไม่มีรหัสพนักงาน + มีชื่อสถานที่ใน Column E
-    if (status === 'assigned' && !employeeId && location) {
-        isCentral = true;
+        // 2. ถ้าไม่เสีย/หาย ให้ดูว่ามีเจ้าของ หรือ สถานที่ หรือไม่
+        if (employeeId) {
+            // มีรหัสพนักงาน = ใช้งานอยู่ (Assigned)
+            status = 'assigned';
+        } else if (location) {
+            // ไม่มีรหัสพนักงาน แต่มีสถานที่ = เครื่องกลาง (Central) -> ใช้งานอยู่
+            status = 'assigned';
+            isCentral = true;
+        } else {
+            // 3. ไม่มีเจ้าของ ไม่มีสถานที่ -> เช็คสถานะ Active/Stock
+            if (s.includes('active') && !s.includes('stock')) {
+                 // Active เฉยๆ และไม่มีคำว่า Stock -> อาจจะใช้งานอยู่ (แต่ข้อมูลคนหาย)
+                 status = 'assigned';
+            } else {
+                 // Stock(Active), Available, หรือค่าว่าง -> ว่าง (Available)
+                 status = 'available';
+            }
+        }
     }
 
     return {
@@ -93,10 +93,10 @@ export const parseLaptopCSV = (text) => {
       name,
       serialNumber,
       employeeId,
-      location, // ✅ ส่งค่า Location กลับไป
+      location, 
       category: 'laptop',
       isRental: false,
-      isCentral, // ✅ ส่งค่า isCentral กลับไป
+      isCentral,
       status
     };
   }).filter(item => item !== null);

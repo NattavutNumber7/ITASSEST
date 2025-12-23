@@ -1,13 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search } from 'lucide-react';
+import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search, Truck } from 'lucide-react'; // เพิ่ม Truck icon
 import { CATEGORIES, COLORS, STATUSES } from '../config.jsx';
 
 const Dashboard = ({ assets }) => {
-  // ✅ เพิ่ม State สำหรับตัวกรอง
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // ✅ กรองข้อมูลทรัพย์สินตามที่เลือก ก่อนนำไปคำนวณสถิติ
   const filteredAssets = useMemo(() => {
     return assets.filter(asset => {
       const matchCategory = filterCategory === 'all' || asset.category === filterCategory;
@@ -16,36 +14,27 @@ const Dashboard = ({ assets }) => {
     });
   }, [assets, filterCategory, filterStatus]);
 
-  // 1. คำนวณสถิติจากข้อมูลที่กรองแล้ว
   const stats = useMemo(() => {
     const total = filteredAssets.length;
     const available = filteredAssets.filter(a => a.status === 'available').length;
-    
-    // นับ assigned รวมทั้งคนถือและเครื่องกลาง (ถ้าสถานะเป็น assigned)
     const assigned = filteredAssets.filter(a => a.status === 'assigned').length;
-    
     const broken = filteredAssets.filter(a => a.status === 'broken').length;
     const repair = filteredAssets.filter(a => a.status === 'repair').length;
-    const lost = filteredAssets.filter(a => a.status === 'lost').length; // ✅ นับจำนวนสูญหาย
+    const lost = filteredAssets.filter(a => a.status === 'lost').length;
+    const pendingVendor = filteredAssets.filter(a => a.status === 'pending_vendor').length; // เพิ่มการนับ
 
-    // แยกนับเครื่องกลาง (Central) ที่สถานะเป็น assigned
     const centralAssigned = filteredAssets.filter(a => a.status === 'assigned' && a.isCentral).length;
-    
-    // แยกนับเครื่องพนักงาน (Person) ที่สถานะเป็น assigned
     const personAssigned = filteredAssets.filter(a => a.status === 'assigned' && !a.isCentral).length;
 
-
-    // คำนวณตามหมวดหมู่
     const byCategory = CATEGORIES.map(cat => ({
       ...cat,
       count: filteredAssets.filter(a => a.category === cat.id).length,
       percentage: total > 0 ? (filteredAssets.filter(a => a.category === cat.id).length / total) * 100 : 0
     })).sort((a, b) => b.count - a.count);
 
-    return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, byCategory };
+    return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, pendingVendor, byCategory };
   }, [filteredAssets]);
 
-  // ฟังก์ชันสร้าง Pie Chart
   const getPieChartStyle = () => {
     if (stats.total === 0) return { background: '#e2e8f0' };
     
@@ -53,7 +42,8 @@ const Dashboard = ({ assets }) => {
     const pAssigned = pAvailable + (stats.assigned / stats.total) * 100;
     const pRepair = pAssigned + (stats.repair / stats.total) * 100;
     const pBroken = pRepair + (stats.broken / stats.total) * 100;
-    const pLost = pBroken + (stats.lost / stats.total) * 100; // ✅ เพิ่ม Lost ใน Pie Chart
+    const pPendingVendor = pBroken + (stats.pendingVendor / stats.total) * 100; // เพิ่ม
+    const pLost = pPendingVendor + (stats.lost / stats.total) * 100;
     
     return {
       background: `conic-gradient(
@@ -61,7 +51,8 @@ const Dashboard = ({ assets }) => {
         ${COLORS.primary} ${pAvailable}% ${pAssigned}%, 
         ${COLORS.secondary} ${pAssigned}% ${pRepair}%, 
         ${COLORS.error} ${pRepair}% ${pBroken}%,
-        #94a3b8 ${pBroken}% 100% 
+        #d8b4fe ${pBroken}% ${pPendingVendor}%, 
+        #94a3b8 ${pPendingVendor}% 100% 
       )`
     };
   };
@@ -129,7 +120,7 @@ const Dashboard = ({ assets }) => {
       </div>
 
       {/* Cards สรุปยอด */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard title="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} icon={<CheckCircle size={24} />} color="bg-emerald-500" bgColor="bg-emerald-50" textColor="text-emerald-700" />
         
         {/* แยก Card ใช้งานอยู่ ให้เห็นชัดเจนขึ้น */}
@@ -155,8 +146,9 @@ const Dashboard = ({ assets }) => {
         </div>
 
         <StatCard title="ส่งซ่อม" count={stats.repair} total={stats.total} icon={<Wrench size={24} />} color="bg-orange-500" bgColor="bg-orange-50" textColor="text-orange-700" />
-        <StatCard title="ชำรุด / เสียหาย" count={stats.broken} total={stats.total} icon={<AlertTriangle size={24} />} color="bg-red-500" bgColor="bg-red-50" textColor="text-red-700" />
-        {/* ✅ เพิ่ม Card สูญหาย */}
+        <StatCard title="ชำรุด" count={stats.broken} total={stats.total} icon={<AlertTriangle size={24} />} color="bg-red-500" bgColor="bg-red-50" textColor="text-red-700" />
+        {/* ✅ เพิ่ม Card รอส่งคืน Vendor */}
+        <StatCard title="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} icon={<Truck size={24} />} color="bg-purple-500" bgColor="bg-purple-50" textColor="text-purple-700" />
         <StatCard title="สูญหาย" count={stats.lost} total={stats.total} icon={<Search size={24} />} color="bg-slate-500" bgColor="bg-slate-100" textColor="text-slate-600" />
       </div>
 
@@ -178,7 +170,7 @@ const Dashboard = ({ assets }) => {
                 <LegendItem color={COLORS.primary} label="ใช้งานอยู่" count={stats.assigned} total={stats.total} />
                 <LegendItem color={COLORS.secondary} label="ส่งซ่อม" count={stats.repair} total={stats.total} />
                 <LegendItem color={COLORS.error} label="ชำรุด" count={stats.broken} total={stats.total} />
-                {/* ✅ เพิ่ม Legend สูญหาย */}
+                <LegendItem color="#d8b4fe" label="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} /> {/* เพิ่ม Legend */}
                 <LegendItem color="#94a3b8" label="สูญหาย" count={stats.lost} total={stats.total} />
                 </div>
             </div>

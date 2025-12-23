@@ -4,10 +4,9 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimest
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check } from 'lucide-react';
 
 // นำเข้า Config และ Components
-// ✅ แก้ไข path ให้ถูกต้อง: ใช้ ./config.jsx สำหรับไฟล์ใน src/ (ไม่ใช่ ../config.jsx)
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, parseLaptopCSV, generateHandoverHtml } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
@@ -20,6 +19,7 @@ import ReturnModal from './components/ReturnModal.jsx';
 import DeleteModal from './components/DeleteModal.jsx';
 import DeletedLogModal from './components/DeletedLogModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import BulkEditModal from './components/BulkEditModal.jsx'; // ✅ เพิ่ม Import
 
 export default function App() {
   // --- สถานะ (States) ---
@@ -53,6 +53,9 @@ export default function App() {
   const [openDropdownId, setOpenDropdownId] = useState(null); 
   const dropdownRef = useRef(null);
 
+  // ✅ State สำหรับการเลือกหลายรายการ (Bulk Select)
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   // สถานะสำหรับ Modals ต่างๆ
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
@@ -61,6 +64,7 @@ export default function App() {
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
   const [showDeletedLog, setShowDeletedLog] = useState(false); 
+  const [bulkEditModal, setBulkEditModal] = useState({ open: false }); // ✅ เพิ่ม State Modal
 
   // --- Effects (Auth & Firestore Listener) ---
   useEffect(() => {
@@ -118,6 +122,12 @@ export default function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // ✅ Reset Selection เมื่อเปลี่ยน View
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [view, filterCategory, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
+
 
   // --- Handlers ---
   const handleSaveSettings = () => { 
@@ -185,7 +195,6 @@ export default function App() {
                     };
                 }
             } else if (item.isCentral && item.location) { 
-                // ✅ เพิ่มเงื่อนไข: ถ้าเป็นเครื่องกลาง ให้บันทึกชื่อเป็น Central - [Location]
                 assigneeInfo = {
                     assignedTo: `Central - ${item.location}`,
                     employeeId: null,
@@ -199,8 +208,8 @@ export default function App() {
                 ...item,
                 ...assigneeInfo,
                 status: finalStatus, 
-                isCentral: item.isCentral || false, // ✅ ใช้ค่าจาก Parser
-                location: item.location || ''       // ✅ ใช้ค่าจาก Parser
+                isCentral: item.isCentral || false, 
+                location: item.location || ''       
             };
 
             if (existingAssetsMap.has(item.serialNumber)) {
@@ -295,8 +304,9 @@ export default function App() {
       
       let newStatus = 'available'; 
       if (conditionStatus === 'ชำรุด') { newStatus = 'broken'; }
-      else if (conditionStatus === 'สูญหาย') { newStatus = 'lost'; } // Correct mapping
+      else if (conditionStatus === 'สูญหาย') { newStatus = 'lost'; } 
       else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } 
+      else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } // เพิ่ม
       
       try { 
           if (type === 'RETURN') { 
@@ -333,6 +343,98 @@ export default function App() {
   const onDeleteClick = (asset) => { setDeleteModal({ open: true, asset }); setOpenDropdownId(null); };
   const handlePrintHandover = (asset) => { const printWindow = window.open('', '', 'width=900,height=800'); printWindow.document.write(generateHandoverHtml(asset)); printWindow.document.close(); setTimeout(() => printWindow.print(), 1000); };
   const openAssignModal = (asset) => { setAssignModal({ open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' }); setOpenDropdownId(null); };
+
+  // ✅ ฟังก์ชันสำหรับการเลือกและจัดการหมู่
+  const handleSelectAll = (filteredItems) => {
+    if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map(a => a.id)));
+    }
+  };
+
+  const handleSelectOne = (id) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const handleBulkEdit = async (field, value, label) => {
+    if (!confirm(`คุณต้องการเปลี่ยน "${label}" สำหรับรายการที่เลือกจำนวน ${selectedIds.size} รายการ ใช่หรือไม่?`)) return;
+
+    try {
+      const batchPromises = Array.from(selectedIds).map(async (id) => {
+        const asset = assets.find(a => a.id === id);
+        if (!asset) return;
+        
+        await updateDoc(doc(db, COLLECTION_NAME, id), { [field]: value });
+        await logActivity('BULK_EDIT', asset, `[Bulk Action] เปลี่ยน ${field} เป็น ${value}`);
+      });
+
+      await Promise.all(batchPromises);
+      showNotification('บันทึกการแก้ไขหมู่เรียบร้อยแล้ว');
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error(error);
+      showNotification('เกิดข้อผิดพลาดในการแก้ไขหมู่', 'error');
+    }
+  };
+
+  // ✅ ฟังก์ชันอัปเดตสถานะแบบกลุ่ม (รับค่าจาก Modal)
+  const handleBulkStatusChange = async (newStatus) => {
+    try {
+      const batchPromises = Array.from(selectedIds).map(async (id) => {
+        const asset = assets.find(a => a.id === id);
+        if (!asset) return;
+
+        const updateData = { status: newStatus };
+        
+        // ถ้าสถานะไม่ใช่ assigned ให้เคลียร์ข้อมูลผู้ถือครอง
+        if (newStatus !== 'assigned') {
+            updateData.assignedTo = null;
+            updateData.employeeId = null;
+            updateData.department = null;
+            updateData.position = null;
+            updateData.assignedDate = null;
+            updateData.isCentral = false;
+            updateData.location = '';
+        }
+
+        await updateDoc(doc(db, COLLECTION_NAME, id), updateData);
+        await logActivity('BULK_STATUS_CHANGE', asset, `[Bulk Action] เปลี่ยนสถานะเป็น ${newStatus}`);
+      });
+
+      await Promise.all(batchPromises);
+      showNotification(`เปลี่ยนสถานะเป็น ${newStatus} เรียบร้อยแล้ว`);
+      setBulkEditModal({ open: false });
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error(error);
+      showNotification('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ', 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`⚠️ คำเตือน: คุณกำลังจะลบ ${selectedIds.size} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันการลบ?`)) return;
+
+    try {
+      const batchPromises = Array.from(selectedIds).map(async (id) => {
+        const asset = assets.find(a => a.id === id);
+        if (!asset) return;
+        
+        await deleteDoc(doc(db, COLLECTION_NAME, id));
+        await logActivity('DELETE', asset, `[Bulk Action] ลบรายการออกจากระบบ`);
+      });
+
+      await Promise.all(batchPromises);
+      showNotification('ลบรายการที่เลือกเรียบร้อยแล้ว');
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error(error);
+      showNotification('เกิดข้อผิดพลาดในการลบหมู่', 'error');
+    }
+  };
 
   const uniqueBrands = [...new Set(assets.map(a => a.brand).filter(Boolean))].sort();
   const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
@@ -429,24 +531,88 @@ export default function App() {
               </div>
             </div>
 
+            {/* ✅ Bulk Action Bar (แสดงเมื่อมีการเลือกรายการ) */}
+            {selectedIds.size > 0 && (
+              <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl flex flex-col sm:flex-row items-center justify-between animate-fade-in shadow-sm gap-3">
+                <div className="flex items-center gap-2 text-blue-800 font-medium text-sm">
+                  <div className="bg-white p-1 rounded border border-blue-200"><CheckSquare size={18} className="text-blue-600"/></div>
+                  <span>เลือกอยู่ <span className="font-bold text-lg mx-1">{selectedIds.size}</span> รายการ</span>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <div className="text-xs text-blue-600/70 font-semibold uppercase mr-1 hidden sm:block">Bulk Actions:</div>
+                  <button 
+                    onClick={() => setBulkEditModal({ open: true })}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
+                  >
+                    <Pencil size={14}/> เปลี่ยนสถานะ
+                  </button>
+                  <button 
+                    onClick={() => handleBulkEdit('isRental', true, 'ตั้งเป็นเครื่องเช่า (Rental)')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-sm hover:bg-purple-50 hover:border-purple-300 transition-all shadow-sm"
+                  >
+                    <Tag size={14}/> ตั้งเป็นเครื่องเช่า
+                  </button>
+                  <button 
+                    onClick={() => handleBulkEdit('isRental', false, 'ตั้งเป็นเครื่องบริษัท (Owned)')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                  >
+                    <Box size={14}/> ตั้งเป็นเครื่องบริษัท
+                  </button>
+                  <div className="h-6 w-px bg-blue-200 mx-1 hidden sm:block"></div>
+                  <button 
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 hover:border-red-300 transition-all shadow-sm"
+                  >
+                    <Trash2 size={14}/> ลบรายการ
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style={{ minHeight: '400px' }}>
               {loading ? <div className="p-12 text-center text-slate-500">Loading...</div> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
                       <tr>
-                        <th className="px-6 py-4">ทรัพย์สิน</th>
-                        <th className="px-6 py-4">สถานะ</th>
-                        <th className="px-6 py-4">ผู้ถือครอง</th>
-                        <th className="px-6 py-4">ตำแหน่ง</th> 
-                        <th className="px-6 py-4">แผนก</th>
-                        <th className="px-6 py-4 text-right">จัดการ</th>
+                        {/* ✅ Checkbox Header */}
+                        <th className="px-4 py-4 w-10 text-center">
+                          <button 
+                            onClick={() => handleSelectAll(filteredAssets)} 
+                            className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                          >
+                            {filteredAssets.length > 0 && selectedIds.size === filteredAssets.length ? (
+                              <CheckSquare size={18} className="text-blue-600" />
+                            ) : (
+                              <Square size={18} />
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-4 py-4">ทรัพย์สิน</th>
+                        <th className="px-4 py-4">สถานะ</th>
+                        <th className="px-4 py-4">ผู้ถือครอง</th>
+                        <th className="px-4 py-4">ตำแหน่ง</th> 
+                        <th className="px-4 py-4">แผนก</th>
+                        <th className="px-4 py-4 text-right">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredAssets.length > 0 ? filteredAssets.map(asset => (
-                        <tr key={asset.id} className="hover:bg-slate-50 align-top">
-                          <td className="px-6 py-4">
+                        <tr key={asset.id} className={`hover:bg-slate-50 align-top transition-colors ${selectedIds.has(asset.id) ? 'bg-blue-50/30' : ''}`}>
+                          {/* ✅ Checkbox Row */}
+                          <td className="px-4 py-4 text-center">
+                            <button 
+                              onClick={() => handleSelectOne(asset.id)}
+                              className="focus:outline-none"
+                            >
+                              {selectedIds.has(asset.id) ? (
+                                <CheckSquare size={18} className="text-blue-600" />
+                              ) : (
+                                <Square size={18} className="text-slate-300 hover:text-slate-400" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-4 py-4">
                             <div className="flex gap-3">
                               <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
                               <div>
@@ -460,18 +626,18 @@ export default function App() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
+                          <td className="px-4 py-4">
                               {asset.isCentral ? (
                                   <div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>
                               ) : asset.status === 'assigned' ? (
                                   <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>
                               ) : '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
+                          <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
+                          <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                           
-                          <td className="px-6 py-4 text-right relative">
+                          <td className="px-4 py-4 text-right relative">
                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
                              {openDropdownId === asset.id && (
                                  <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-slate-200 overflow-hidden" style={{ marginRight: '1.5rem', marginTop: '-10px' }}>
@@ -489,7 +655,7 @@ export default function App() {
                                                 {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
                                             </>
                                         )}
-                                        {(['broken','repair','lost'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
+                                        {(['broken','repair','lost','pending_vendor'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
                                         <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
                                         <div className="border-t border-slate-100 my-1"></div>
                                         <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
@@ -499,7 +665,7 @@ export default function App() {
                           </td>
                         </tr>
                       )) : (
-                        <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-400">ไม่พบข้อมูลที่ค้นหา</td></tr>
+                        <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">ไม่พบข้อมูลที่ค้นหา</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -575,6 +741,12 @@ export default function App() {
         show={showDeletedLog} 
         onClose={() => setShowDeletedLog(false)} 
         db={db} 
+      />
+      <BulkEditModal 
+        show={bulkEditModal.open} 
+        onClose={() => setBulkEditModal({ open: false })} 
+        onSubmit={handleBulkStatusChange} 
+        selectedCount={selectedIds.size} 
       />
     </div>
   );
