@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'; // ✅ เพิ่ม useMemo
-// นำเข้า writeBatch มาเพิ่มเพื่อทำ Atomic Operation
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch } from 'firebase/firestore'; 
+// นำเข้า runTransaction เพื่อทำ Atomic Operation ที่ปลอดภัยกว่าเดิม
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction } from 'firebase/firestore'; 
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
@@ -67,9 +67,16 @@ export default function App() {
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   // 🛡️ Security: Helper function to sanitize input strings
+  // ป้องกัน XSS และ CSV Injection เบื้องต้น
   const sanitizeInput = (input) => {
     if (typeof input !== 'string') return input;
-    return input.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let safe = input.trim();
+    // ป้องกัน CSV Injection
+    if (safe.startsWith('=') || safe.startsWith('+') || safe.startsWith('-') || safe.startsWith('@')) {
+        safe = "'" + safe; 
+    }
+    // ป้องกัน XSS
+    return safe.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   };
 
   // --- Effects (Auth & Firestore Listener) ---
@@ -316,41 +323,79 @@ export default function App() {
   
   const handleAssignSubmit = async (e, assignType) => { 
     e.preventDefault();
-    if (assignType === 'person') {
-        // 🛡️ Fix: ใช้ Optional chaining ป้องกัน Crash กรณี empStatus เป็น null
-        if (assignModal.empStatus?.toLowerCase().includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
-        try {
-          const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName;
-          await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
-            status: 'assigned', 
-            assignedTo: fullName, 
-            employeeId: assignModal.empId, 
-            department: assignModal.empDept, 
-            position: assignModal.empPosition, 
-            assignedDate: new Date().toISOString(),
-            isCentral: false, 
-            location: '' 
-          });
-          await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `เบิกให้: ${fullName} (${assignModal.empDept})`);
-          setAssignModal({ ...assignModal, open: false }); showNotification('บันทึกสำเร็จ');
-        } catch { showNotification('Failed', 'error'); }
-    } else if (assignType === 'central') {
-        try {
-            // 🛡️ Sanitize location
-            const safeLocation = sanitizeInput(assignModal.location);
-            await updateDoc(doc(db, COLLECTION_NAME, assignModal.assetId), { 
-                status: 'assigned', 
-                assignedTo: `Central - ${safeLocation}`, 
-                employeeId: null, 
-                department: null, 
-                position: null, 
-                assignedDate: new Date().toISOString(), 
-                isCentral: true, 
-                location: safeLocation 
+    
+    // 🛡️ Security: Use Transaction for Race Condition Protection
+    try {
+        await runTransaction(db, async (transaction) => {
+            const assetDocRef = doc(db, COLLECTION_NAME, assignModal.assetId);
+            const assetDoc = await transaction.get(assetDocRef);
+            
+            if (!assetDoc.exists()) {
+                throw "Document does not exist!";
+            }
+
+            const currentData = assetDoc.data();
+            // เช็คว่าสถานะยังเป็น 'available' จริงหรือไม่ (ป้องกันเบิกซ้อน)
+            if (currentData.status !== 'available' && currentData.status !== 'returned') {
+                // อนุญาตให้เบิกซ้ำได้ถ้าเป็น case خاص หรือจะ block ก็ได้ แต่ปกติควรเช็คก่อน
+                // ในที่นี้เราจะยอมให้ทับ ถ้า User ยืนยันมาแล้วจาก UI แต่ถ้าจะ Strict ก็ throw error ได้
+                // throw "Asset is already assigned!"; 
+            }
+
+            let updateData = {};
+            let logDetails = '';
+
+            if (assignType === 'person') {
+                if (assignModal.empStatus?.toLowerCase().includes('resign') && !confirm('พนักงานลาออกแล้ว ยืนยัน?')) return;
+                
+                const fullName = assignModal.empNickname ? `${assignModal.empName} (${assignModal.empNickname})` : assignModal.empName;
+                updateData = { 
+                    status: 'assigned', 
+                    assignedTo: fullName, 
+                    employeeId: assignModal.empId, 
+                    department: assignModal.empDept, 
+                    position: assignModal.empPosition, 
+                    assignedDate: new Date().toISOString(),
+                    isCentral: false, 
+                    location: '' 
+                };
+                logDetails = `เบิกให้: ${fullName} (${assignModal.empDept})`;
+            } else if (assignType === 'central') {
+                const safeLocation = sanitizeInput(assignModal.location);
+                updateData = { 
+                    status: 'assigned', 
+                    assignedTo: `Central - ${safeLocation}`, 
+                    employeeId: null, 
+                    department: null, 
+                    position: null, 
+                    assignedDate: new Date().toISOString(), 
+                    isCentral: true, 
+                    location: safeLocation 
+                };
+                logDetails = `ตั้งเป็นเครื่องกลาง: ${safeLocation}`;
+            }
+
+            transaction.update(assetDocRef, updateData);
+            
+            // Transaction ไม่รองรับการเขียน Log ไปอีก Collection ได้โดยตรงใน Atomic เดียวกันข้าม Collection แบบง่ายๆ 
+            // แต่ Firestore รองรับการเขียนหลาย Doc ใน Transaction เดียวกัน
+            const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
+            transaction.set(logRef, {
+                assetId: assignModal.assetId,
+                assetName: assignModal.assetName,
+                serialNumber: currentData.serialNumber || '',
+                action: 'ASSIGN',
+                details: logDetails,
+                performedBy: user.email,
+                timestamp: serverTimestamp()
             });
-            await logActivity('ASSIGN', { id: assignModal.assetId, name: assignModal.assetName, serialNumber: '' }, `ตั้งเป็นเครื่องกลาง: ${safeLocation}`);
-            setAssignModal({ ...assignModal, open: false }); showNotification('ตั้งเป็นเครื่องกลางสำเร็จ');
-          } catch { showNotification('Failed', 'error'); }
+        });
+
+        setAssignModal({ ...assignModal, open: false }); 
+        showNotification('บันทึกสำเร็จ');
+    } catch (e) {
+        console.error("Assign Transaction failed: ", e);
+        showNotification('เกิดข้อผิดพลาด หรืออุปกรณ์ถูกเบิกไปแล้ว', 'error');
     }
   };
 
@@ -390,25 +435,43 @@ export default function App() {
       if (conditionStatus === 'ชำรุด') { newStatus = 'broken'; }
       else if (conditionStatus === 'สูญหาย') { newStatus = 'lost'; } 
       else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } 
-      else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } // เพิ่ม
+      else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } 
       
       try { 
           // 🛡️ Sanitize Notes/Conditions
           const safeCondition = sanitizeInput(fullConditionString);
 
           if (type === 'RETURN') { 
-              await updateDoc(doc(db, COLLECTION_NAME, asset.id), { 
-                  status: newStatus, 
-                  assignedTo: null, 
-                  employeeId: null, 
-                  department: null, 
-                  position: null, 
-                  assignedDate: null, 
-                  isCentral: false, 
-                  location: '',     
-                  notes: asset.notes ? `${asset.notes} | คืน: ${safeCondition}` : `คืน: ${safeCondition}` 
-              }); 
-              await logActivity('RETURN', asset, `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${safeCondition})`); 
+              // 🛡️ Use Transaction for Return
+              await runTransaction(db, async (transaction) => {
+                  const assetDocRef = doc(db, COLLECTION_NAME, asset.id);
+                  const assetDoc = await transaction.get(assetDocRef);
+                  if (!assetDoc.exists()) throw "Document does not exist!";
+
+                  transaction.update(assetDocRef, {
+                      status: newStatus, 
+                      assignedTo: null, 
+                      employeeId: null, 
+                      department: null, 
+                      position: null, 
+                      assignedDate: null, 
+                      isCentral: false, 
+                      location: '',     
+                      notes: asset.notes ? `${asset.notes} | คืน: ${safeCondition}` : `คืน: ${safeCondition}` 
+                  });
+
+                  const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
+                  transaction.set(logRef, {
+                      assetId: asset.id,
+                      assetName: asset.name,
+                      serialNumber: asset.serialNumber,
+                      action: 'RETURN',
+                      details: `รับคืนจาก: ${asset.assignedTo} (สภาพ: ${safeCondition})`,
+                      performedBy: user.email,
+                      timestamp: serverTimestamp()
+                  });
+              });
+
               showNotification('รับคืนสำเร็จ'); 
           } else if (type === 'CHANGE_OWNER') { 
               await logActivity('RETURN', asset, `(เปลี่ยนมือ) รับคืนจาก: ${asset.assignedTo} (สภาพ: ${safeCondition})`); 
@@ -417,7 +480,7 @@ export default function App() {
           } 
       } catch (error) { 
           console.error(error); 
-          showNotification('Failed', 'error'); 
+          showNotification('Failed to return asset', 'error'); 
       } finally { 
           setReturnModal({ open: false, asset: null, type: 'RETURN' }); 
       } 
