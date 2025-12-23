@@ -48,7 +48,7 @@ const Login = ({ message }) => {
             alt="Logo" 
             className="h-16 w-auto mx-auto mb-4 bg-white p-2 rounded-lg shadow-sm"
           />
-          <h2 className="text-2xl font-bold text-white">IT Asset Management </h2>
+          <h2 className="text-2xl font-bold text-white">IT Asset Management System </h2>
           <p className="text-white/90 mt-2">ระบบจัดการทรัพย์สินภายในองค์กร</p>
         </div>
 
