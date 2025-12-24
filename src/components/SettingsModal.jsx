@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, Download, AlertTriangle } from 'lucide-react';
+import { Settings, Download, AlertTriangle, CloudUpload } from 'lucide-react';
 import { COLORS } from '../config.jsx';
 
-const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, setLaptopSheetUrl, onSave, onSyncLaptops, isSyncing, isSyncingLaptops }) => {
+const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, setLaptopSheetUrl, exportUrl, setExportUrl, onSave, onSyncLaptops, isSyncing, isSyncingLaptops }) => {
   const [error, setError] = useState('');
 
   if (!show) return null;
@@ -19,6 +19,11 @@ const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, s
 
     if (!isValidGoogleSheet(sheetUrl) || !isValidGoogleSheet(laptopSheetUrl)) {
         setError('ลิงก์ต้องเป็น Google Sheets URL ที่ถูกต้อง (ขึ้นต้นด้วย https://docs.google.com/spreadsheets/)');
+        return;
+    }
+
+    if (exportUrl && !exportUrl.startsWith('https://script.google.com/')) {
+        setError('ลิงก์ Apps Script ต้องขึ้นต้นด้วย https://script.google.com/');
         return;
     }
 
@@ -88,6 +93,28 @@ const SettingsModal = ({ show, onClose, sheetUrl, setSheetUrl, laptopSheetUrl, s
                         <Download size={14}/> {isSyncingLaptops ? '...' : 'Sync'}
                     </button>
                 </div>
+            </div>
+          </div>
+
+          {/* ✅ ส่วนที่ 3: เพิ่มใหม่ Export / Sync */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 mb-2 border-b pb-1">3. เชื่อมต่อบัญชี (Accounting Sync)</h4>
+            <div className="space-y-2">
+                <label className="block text-xs font-medium text-slate-500 flex items-center gap-1">
+                   <CloudUpload size={12}/> Google Apps Script Web App URL
+                </label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 transition-all"
+                  style={{focusBorderColor: COLORS.primary}}
+                  value={exportUrl || ''} 
+                  onChange={(e) => {
+                      setExportUrl(e.target.value);
+                      setError('');
+                  }}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                />
+                <p className="text-[10px] text-slate-400">วาง URL ที่ได้จากการ Deploy Apps Script เพื่อส่งข้อมูลไป Google Sheet</p>
             </div>
           </div>
 

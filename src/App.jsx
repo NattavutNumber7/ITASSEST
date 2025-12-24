@@ -4,11 +4,11 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimest
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning } from 'lucide-react';
 
 // นำเข้า Config และ Components
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
-import { parseCSV, parseLaptopCSV, generateHandoverHtml } from './utils/helpers.js';
+import { parseCSV, parseLaptopCSV, generateHandoverHtml, exportToCSV } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
@@ -46,7 +46,9 @@ export default function App() {
   // สถานะอื่นๆ
   const [sheetUrl, setSheetUrl] = useState('');
   const [laptopSheetUrl, setLaptopSheetUrl] = useState('');
+  const [exportUrl, setExportUrl] = useState(''); // ✅ เพิ่ม state exportUrl
   const [isSyncingLaptops, setIsSyncingLaptops] = useState(false);
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false); // ✅ เพิ่ม state isSyncingSheet
 
   const [employees, setEmployees] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -128,6 +130,9 @@ export default function App() {
     const savedLaptopUrl = localStorage.getItem('it_asset_laptop_sheet_url');
     if (savedLaptopUrl) { setLaptopSheetUrl(savedLaptopUrl); }
 
+    const savedExportUrl = localStorage.getItem('it_asset_export_url'); // ✅ Load Export URL
+    if (savedExportUrl) setExportUrl(savedExportUrl);
+
     return () => unsubscribe();
   }, []);
 
@@ -176,6 +181,7 @@ export default function App() {
       }
       localStorage.setItem('it_asset_sheet_url', sheetUrl); 
       localStorage.setItem('it_asset_laptop_sheet_url', laptopSheetUrl); 
+      localStorage.setItem('it_asset_export_url', exportUrl); // ✅ Save Export URL
       showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว'); 
       fetchEmployeesFromSheet(sheetUrl);
   };
@@ -292,6 +298,33 @@ export default function App() {
         showNotification('เกิดข้อผิดพลาดในการ Sync Laptop', 'error');
     } finally {
         setIsSyncingLaptops(false);
+    }
+  };
+
+  // ✅ เพิ่มฟังก์ชัน Sync ไป Google Sheet
+  const handleSyncToSheet = async () => {
+    if (!exportUrl) {
+        showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
+        setShowSettings(true);
+        return;
+    }
+    
+    setIsSyncingSheet(true);
+    try {
+        // ส่งข้อมูล assets ทั้งหมดไปที่ Script
+        await fetch(exportUrl, {
+            method: 'POST',
+            mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block (Apps Script รับข้อมูลได้ปกติ)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assets: assets })
+        });
+        
+        showNotification('ส่งข้อมูลไปยัง Google Sheet เรียบร้อยแล้ว');
+    } catch (error) {
+        console.error("Sync Error:", error);
+        showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+    } finally {
+        setIsSyncingSheet(false);
     }
   };
 
@@ -747,6 +780,31 @@ export default function App() {
             <div className="flex gap-2">
                 {(view === 'list' || view === 'add') && ( <button onClick={() => setShowDeletedLog(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium transition-colors whitespace-nowrap"><Trash2 size={16} className="text-red-500" /> <span className="hidden sm:inline">ประวัติการลบ</span></button> )}
                 
+                {/* ✅ เพิ่มปุ่ม Export Group */}
+                {view === 'list' && (
+                    <>
+                        <button 
+                            onClick={() => exportToCSV(assets)}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium transition-colors whitespace-nowrap"
+                            title="ดาวน์โหลดไฟล์ CSV"
+                        >
+                            <FileSpreadsheet size={16} className="text-green-600" /> 
+                            <span className="hidden sm:inline">CSV</span>
+                        </button>
+                        
+                        <button 
+                            onClick={handleSyncToSheet}
+                            disabled={isSyncingSheet}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-white text-sm font-medium transition-colors whitespace-nowrap shadow-sm ${isSyncingSheet ? 'opacity-70 cursor-wait' : 'hover:opacity-90'}`}
+                            style={{backgroundColor: COLORS.secondary}}
+                            title="อัปเดตข้อมูลไปที่ Google Sheet บัญชี"
+                        >
+                            <CloudLightning size={16} className={isSyncingSheet ? "animate-pulse" : ""} /> 
+                            <span className="hidden sm:inline">{isSyncingSheet ? 'Syncing...' : 'Update Sheet'}</span>
+                        </button>
+                    </>
+                )}
+
                 {/* 🛡️ UI Hiding: Show Add button only for Admin */}
                 {view === 'list' && isAdmin && ( <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 text-sm font-medium transition-colors shadow-sm whitespace-nowrap" style={{backgroundColor: COLORS.primary}}><Plus size={18} /> เพิ่มรายการ</button> )}
                 
@@ -984,6 +1042,8 @@ export default function App() {
          setSheetUrl={setSheetUrl} 
          laptopSheetUrl={laptopSheetUrl} // Pass prop
          setLaptopSheetUrl={setLaptopSheetUrl} // Pass prop
+         exportUrl={exportUrl} // ✅ Pass
+         setExportUrl={setExportUrl} // ✅ Pass
          onSave={handleSaveSettings} 
          onSyncLaptops={handleSyncLaptops} // Pass prop
          isSyncing={isSyncing}

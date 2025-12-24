@@ -269,3 +269,41 @@ export const generateHandoverHtml = (asset) => {
     </html>
   `;
 };
+
+// ✅ เพิ่มฟังก์ชันใหม่สำหรับการ Export CSV
+export const exportToCSV = (assets) => {
+  if (!assets || assets.length === 0) return;
+
+  const headers = [
+    "Asset Name,Brand,Serial Number,Category,Status,Assigned To,Employee ID,Department,Position,Is Rental,Is Central,Location,Notes"
+  ];
+
+  const rows = assets.map(asset => {
+    return [
+      `"${asset.name || ''}"`,
+      `"${asset.brand || ''}"`,
+      `"${asset.serialNumber || ''}"`,
+      `"${asset.category || ''}"`,
+      `"${asset.status || ''}"`,
+      `"${asset.assignedTo || ''}"`,
+      `"${asset.employeeId || ''}"`,
+      `"${asset.department || ''}"`,
+      `"${asset.position || ''}"`,
+      `"${asset.isRental ? 'Yes' : 'No'}"`,
+      `"${asset.isCentral ? 'Yes' : 'No'}"`,
+      `"${asset.location || ''}"`,
+      `"${(asset.notes || '').replace(/"/g, '""')}"` // Escape double quotes
+    ].join(",");
+  });
+
+  const csvContent = "\uFEFF" + [headers, ...rows].join("\n"); // Add BOM for Excel thai support
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `IT_Assets_Export_${new Date().toISOString().slice(0,10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
