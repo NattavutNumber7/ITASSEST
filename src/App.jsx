@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'; // ✅ เพิ่ม useMemo
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 // นำเข้า getDoc เพื่อดึงข้อมูล Role
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc } from 'firebase/firestore'; 
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
@@ -68,15 +68,12 @@ export default function App() {
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   // 🛡️ Security: Helper function to sanitize input strings
-  // ป้องกัน XSS และ CSV Injection เบื้องต้น
   const sanitizeInput = (input) => {
     if (typeof input !== 'string') return input;
     let safe = input.trim();
-    // ป้องกัน CSV Injection
     if (safe.startsWith('=') || safe.startsWith('+') || safe.startsWith('-') || safe.startsWith('@')) {
         safe = "'" + safe; 
     }
-    // ป้องกัน XSS
     return safe.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   };
 
@@ -85,7 +82,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
-        // 🔒 Note: การเช็คตรงนี้เป็น Client-side security ควรทำ Firestore Rules ด้วย
+        
         if (!userEmail.endsWith('@freshket.co')) {
            console.warn("Access Denied: Email domain not allowed");
            setLoginError({ text: 'ขออภัย ระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น', timestamp: Date.now() });
@@ -97,20 +94,25 @@ export default function App() {
           
           // 🛡️ RBAC: ตรวจสอบสิทธิ์ Admin จาก Firestore
           try {
-             // ใช้ Email เป็น Document ID ใน Collection 'users' เพื่อความสะดวก
+             // ใช้ Email (ตัวพิมพ์เล็ก) เป็น Document ID
              const userDocRef = doc(db, 'users', userEmail);
              const userDoc = await getDoc(userDocRef);
              
-             if (userDoc.exists() && userDoc.data().role === 'admin') {
-                 setIsAdmin(true);
-                 console.log("Admin Access Granted");
+             if (userDoc.exists()) {
+                 const userData = userDoc.data();
+                 console.log("User Role Found:", userData.role); // 🔍 Debug Log
+                 if (userData.role === 'admin') {
+                     setIsAdmin(true);
+                 } else {
+                     setIsAdmin(false);
+                 }
              } else {
+                 console.warn(`No user document found for: ${userEmail}. Assuming Viewer.`); // 🔍 Debug Log
                  setIsAdmin(false);
-                 console.log("User Access (Viewer Only)");
              }
           } catch (error) {
-             console.error("Error checking role:", error);
-             setIsAdmin(false); // Default to non-admin on error
+             console.error("Error checking role (Permission denied?):", error); // 🔍 Debug Log
+             setIsAdmin(false); 
           }
         }
       } else {
@@ -136,7 +138,6 @@ export default function App() {
     }
     const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // 🛡️ Filter Soft Deleted items out from main view (กรองรายการที่ถูก Soft Delete ออก)
       const activeItems = items.filter(item => !item.isDeleted);
       activeItems.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setAssets(activeItems);
@@ -167,10 +168,8 @@ export default function App() {
 
   // --- Handlers ---
   const handleSaveSettings = () => { 
-      // 🛡️ Check Admin
       if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่แก้ไขตั้งค่าได้', 'error'); return; }
 
-      // 🛡️ Validate URLs before saving
       if (sheetUrl && !sheetUrl.startsWith('https://docs.google.com/')) {
           showNotification('ลิงก์ Google Sheet ไม่ถูกต้อง', 'error');
           return;
@@ -199,7 +198,7 @@ export default function App() {
   };
 
   const handleSyncLaptops = async () => {
-    if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่ Sync ข้อมูลได้', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่ Sync ข้อมูลได้', 'error'); return; }
     if (!laptopSheetUrl) return;
     
     setIsSyncingLaptops(true);
@@ -209,14 +208,13 @@ export default function App() {
         const text = await res.text();
         const laptopData = parseLaptopCSV(text);
         
-        // 🚀 Optimization: ใช้ Batch write สำหรับ Sync จำนวนมาก
         const batch = writeBatch(db);
         const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
         
         let addedCount = 0;
         let updatedCount = 0;
         let operationCount = 0;
-        const BATCH_LIMIT = 500; // Firestore limit per batch
+        const BATCH_LIMIT = 500; 
         
         for (const item of laptopData) {
             const finalStatus = item.status; 
@@ -277,7 +275,6 @@ export default function App() {
             }
             operationCount++;
 
-            // ถ้าเกิน Limit ให้ commit แล้วเริ่ม batch ใหม่ (กรณีข้อมูลเยอะมาก)
             if (operationCount >= BATCH_LIMIT) {
                 await batch.commit();
                 operationCount = 0;
@@ -299,7 +296,6 @@ export default function App() {
   };
 
   const lookupEmployee = (id) => { 
-      // 🛡️ Sanitize employee ID input
       const safeId = sanitizeInput(id);
       const emp = employees.find(e => e.id.toLowerCase() === safeId.toLowerCase()); 
       if (emp) { 
@@ -322,10 +318,9 @@ export default function App() {
   const handleAddAsset = async (e) => { 
     e.preventDefault(); 
     if (!user) return; 
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
 
     try { 
-      // 🛡️ Sanitize Inputs
       const safeData = {
           ...newAsset,
           name: sanitizeInput(newAsset.name),
@@ -350,9 +345,8 @@ export default function App() {
   
   const handleAssignSubmit = async (e, assignType) => { 
     e.preventDefault();
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
     
-    // 🛡️ Security: Use Transaction for Race Condition Protection
     try {
         await runTransaction(db, async (transaction) => {
             const assetDocRef = doc(db, COLLECTION_NAME, assignModal.assetId);
@@ -363,10 +357,6 @@ export default function App() {
             }
 
             const currentData = assetDoc.data();
-            // เช็คว่าสถานะยังเป็น 'available' จริงหรือไม่ (ป้องกันเบิกซ้อน)
-            if (currentData.status !== 'available' && currentData.status !== 'returned') {
-                // อนุญาตให้เบิกซ้ำได้ถ้าเป็น case خاص หรือจะ block ก็ได้ แต่ปกติควรเช็คก่อน
-            }
 
             let updateData = {};
             let logDetails = '';
@@ -425,10 +415,9 @@ export default function App() {
 
   const handleEditSubmit = async (e) => { 
       e.preventDefault(); 
-      if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+      if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
 
       try { 
-          // 🛡️ Sanitize Inputs on Edit
           const updateData = { 
               ...editModal.asset,
               name: sanitizeInput(editModal.asset.name),
@@ -456,7 +445,7 @@ export default function App() {
   const handleReturnSubmit = async (fullConditionString, conditionStatus) => { 
       const { asset, type } = returnModal; 
       if (!asset) return; 
-      if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+      if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
       
       let newStatus = 'available'; 
       if (conditionStatus === 'ชำรุด') { newStatus = 'broken'; }
@@ -465,11 +454,9 @@ export default function App() {
       else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } 
       
       try { 
-          // 🛡️ Sanitize Notes/Conditions
           const safeCondition = sanitizeInput(fullConditionString);
 
           if (type === 'RETURN') { 
-              // 🛡️ Use Transaction for Return
               await runTransaction(db, async (transaction) => {
                   const assetDocRef = doc(db, COLLECTION_NAME, asset.id);
                   const assetDoc = await transaction.get(assetDocRef);
@@ -516,13 +503,11 @@ export default function App() {
   const handleDeleteSubmit = async (reason) => { 
     const asset = deleteModal.asset; 
     if (!asset) return; 
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
 
     try { 
-        // 🛡️ Sanitize Reason
         const safeReason = sanitizeInput(reason);
 
-        // 🔄 Soft Delete: Update 'isDeleted' flag instead of deleting document
         await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
             isDeleted: true,
             deletedAt: new Date().toISOString(),
@@ -564,17 +549,16 @@ export default function App() {
 
   const handleBulkEdit = async (field, value, label) => {
     if (!confirm(`คุณต้องการเปลี่ยน "${label}" สำหรับรายการที่เลือกจำนวน ${selectedIds.size} รายการ ใช่หรือไม่?`)) return;
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
 
     try {
-      const batch = writeBatch(db); // 🔒 ใช้ Batch Write เพื่อความเสถียร
+      const batch = writeBatch(db); 
       const timestamp = serverTimestamp();
 
       Array.from(selectedIds).forEach((id) => {
         const docRef = doc(db, COLLECTION_NAME, id);
         batch.update(docRef, { [field]: value });
         
-        // Log Activity สำหรับแต่ละรายการ
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
         const asset = assets.find(a => a.id === id);
         if (asset) {
@@ -590,7 +574,7 @@ export default function App() {
         }
       });
 
-      await batch.commit(); // ทำงานทีเดียวพร้อมกัน
+      await batch.commit(); 
       showNotification('บันทึกการแก้ไขหมู่เรียบร้อยแล้ว');
       setSelectedIds(new Set());
     } catch (error) {
@@ -599,11 +583,10 @@ export default function App() {
     }
   };
 
-  // ✅ ฟังก์ชันอัปเดตสถานะแบบกลุ่ม (รับค่าจาก Modal)
   const handleBulkStatusChange = async (newStatus) => {
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
     try {
-      const batch = writeBatch(db); // 🔒 ใช้ Batch Write
+      const batch = writeBatch(db); 
       const timestamp = serverTimestamp();
 
       Array.from(selectedIds).forEach((id) => {
@@ -613,7 +596,6 @@ export default function App() {
         const docRef = doc(db, COLLECTION_NAME, id);
         const updateData = { status: newStatus };
         
-        // ถ้าสถานะไม่ใช่ assigned ให้เคลียร์ข้อมูลผู้ถือครอง
         if (newStatus !== 'assigned') {
             updateData.assignedTo = null;
             updateData.employeeId = null;
@@ -626,7 +608,6 @@ export default function App() {
 
         batch.update(docRef, updateData);
 
-        // Add Log
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
         batch.set(logRef, {
             assetId: asset.id,
@@ -651,10 +632,10 @@ export default function App() {
 
   const handleBulkDelete = async () => {
     if (!confirm(`⚠️ คำเตือน: คุณกำลังจะลบ ${selectedIds.size} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันการลบ?`)) return;
-    if (!isAdmin) { showNotification('Access Denied', 'error'); return; } // 🛡️ Guard
+    if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
 
     try {
-      const batch = writeBatch(db); // 🔒 ใช้ Batch Write
+      const batch = writeBatch(db); 
       const timestamp = serverTimestamp();
 
       Array.from(selectedIds).forEach((id) => {
@@ -662,7 +643,6 @@ export default function App() {
         if (!asset) return;
         
         const docRef = doc(db, COLLECTION_NAME, id);
-        // 🔄 Soft Delete for Bulk Action
         batch.update(docRef, {
             isDeleted: true,
             deletedAt: new Date().toISOString(),
@@ -670,7 +650,6 @@ export default function App() {
             deleteReason: '[Bulk Delete]'
         });
 
-        // Add Log
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
         batch.set(logRef, {
             assetId: asset.id,
@@ -696,7 +675,6 @@ export default function App() {
   const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
   const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
 
-  // 🚀 Optimization: ใช้ useMemo เพื่อป้องกันการคำนวณซ้ำโดยไม่จำเป็น
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
         const term = searchTerm.toLowerCase();
