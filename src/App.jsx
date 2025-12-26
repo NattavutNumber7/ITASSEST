@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // นำเข้า getDoc เพื่อดึงข้อมูล Role
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc } from 'firebase/firestore'; 
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc, getDocs, orderBy, query } from 'firebase/firestore'; 
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
@@ -311,15 +311,51 @@ export default function App() {
     
     setIsSyncingSheet(true);
     try {
-        // ส่งข้อมูล assets ทั้งหมดไปที่ Script
-        await fetch(exportUrl, {
+        // ✅ 1. ดึงข้อมูลล่าสุดจาก Firestore ใหม่เสมอ เพื่อความชัวร์ (ไม่ใช้ State ที่อาจเก่า)
+        const q = query(collection(db, COLLECTION_NAME), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        
+        const freshAssets = querySnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(item => !item.isDeleted); // กรองที่ลบออก
+
+        console.log("Preparing to sync items:", freshAssets.length);
+
+        // ✅ 2. เตรียมข้อมูล (Sanitize และจัดการค่า Null ให้เป็น String ว่าง)
+        const payload = {
+            assets: freshAssets.map(a => ({
+                id: a.id,
+                name: a.name || '',
+                brand: a.brand || '',
+                serialNumber: a.serialNumber || '',
+                category: a.category || '',
+                status: a.status || '',
+                assignedTo: a.assignedTo || '', // สำคัญ: ต้องส่งค่าว่างถ้าไม่มี
+                employeeId: a.employeeId || '',
+                department: a.department || '',
+                position: a.position || '',
+                isRental: !!a.isRental,
+                isCentral: !!a.isCentral,
+                location: a.location || '',
+                notes: a.notes || ''
+            }))
+        };
+
+        // ✅ 3. ส่งข้อมูล assets ทั้งหมดไปที่ Script
+        // ใช้ ?t= เพื่อป้องกันการ Cache และใช้ text/plain เพื่อให้ส่งผ่านชัวร์ที่สุดในโหมด no-cors
+        const cleanUrl = exportUrl.trim();
+        const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        
+        console.log("Sending payload to:", targetUrl);
+
+        await fetch(targetUrl, {
             method: 'POST',
-            mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block (Apps Script รับข้อมูลได้ปกติ)
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ assets: assets })
+            mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // ⚠️ เปลี่ยนเป็น text/plain เพื่อให้ Apps Script รับได้แน่นอน
+            body: JSON.stringify(payload)
         });
         
-        showNotification('ส่งข้อมูลไปยัง Google Sheet เรียบร้อยแล้ว');
+        showNotification('ส่งข้อมูลไปยัง Google Sheet เรียบร้อยแล้ว (กรุณารอสักครู่)');
     } catch (error) {
         console.error("Sync Error:", error);
         showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
