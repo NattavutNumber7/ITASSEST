@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // นำเข้า getDoc เพื่อดึงข้อมูล Role
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc, getDocs, orderBy, query } from 'firebase/firestore'; 
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc } from 'firebase/firestore'; 
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
@@ -301,67 +301,65 @@ export default function App() {
     }
   };
 
-  // ✅ เพิ่มฟังก์ชัน Sync ไป Google Sheet
-  const handleSyncToSheet = async () => {
+  // ✅ ฟังก์ชัน Sync ไป Google Sheet (ปรับปรุง: Fire-and-Forget ไม่ต้องรอ Server ตอบกลับ)
+  const handleSyncToSheet = () => {
     if (!exportUrl) {
         showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
         setShowSettings(true);
         return;
     }
     
+    // ตั้งค่า Loading ชั่วคราวเพื่อกันการกดซ้ำรัวๆ
     setIsSyncingSheet(true);
-    try {
-        // ✅ 1. ดึงข้อมูลล่าสุดจาก Firestore ใหม่เสมอ เพื่อความชัวร์ (ไม่ใช้ State ที่อาจเก่า)
-        const q = query(collection(db, COLLECTION_NAME), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
-        
-        const freshAssets = querySnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(item => !item.isDeleted); // กรองที่ลบออก
+    
+    // ใช้ setTimeout เพื่อให้ React render Loading state ขึ้นมาแว๊บนึง ก่อนเริ่ม process
+    setTimeout(() => {
+        try {
+            // 1. เตรียมข้อมูล (เร็วมากเพราะใช้ Local State)
+            const payload = {
+                assets: assets.map(a => ({
+                    id: a.id,
+                    name: a.name || '',
+                    brand: a.brand || '',
+                    serialNumber: a.serialNumber || '',
+                    category: a.category || '',
+                    status: a.status || '',
+                    assignedTo: a.assignedTo || '', // สำคัญ: ต้องส่งค่าว่างถ้าไม่มี
+                    employeeId: a.employeeId || '',
+                    department: a.department || '',
+                    position: a.position || '',
+                    isRental: !!a.isRental,
+                    isCentral: !!a.isCentral,
+                    location: a.location || '',
+                    notes: a.notes || ''
+                }))
+            };
 
-        console.log("Preparing to sync items:", freshAssets.length);
+            const cleanUrl = exportUrl.trim();
+            const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+            
+            console.log("Sending payload to Google Sheet (Background Mode)...");
 
-        // ✅ 2. เตรียมข้อมูล (Sanitize และจัดการค่า Null ให้เป็น String ว่าง)
-        const payload = {
-            assets: freshAssets.map(a => ({
-                id: a.id,
-                name: a.name || '',
-                brand: a.brand || '',
-                serialNumber: a.serialNumber || '',
-                category: a.category || '',
-                status: a.status || '',
-                assignedTo: a.assignedTo || '', // สำคัญ: ต้องส่งค่าว่างถ้าไม่มี
-                employeeId: a.employeeId || '',
-                department: a.department || '',
-                position: a.position || '',
-                isRental: !!a.isRental,
-                isCentral: !!a.isCentral,
-                location: a.location || '',
-                notes: a.notes || ''
-            }))
-        };
-
-        // ✅ 3. ส่งข้อมูล assets ทั้งหมดไปที่ Script
-        // ใช้ ?t= เพื่อป้องกันการ Cache และใช้ text/plain เพื่อให้ส่งผ่านชัวร์ที่สุดในโหมด no-cors
-        const cleanUrl = exportUrl.trim();
-        const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-        
-        console.log("Sending payload to:", targetUrl);
-
-        await fetch(targetUrl, {
-            method: 'POST',
-            mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // ⚠️ เปลี่ยนเป็น text/plain เพื่อให้ Apps Script รับได้แน่นอน
-            body: JSON.stringify(payload)
-        });
-        
-        showNotification('ส่งข้อมูลไปยัง Google Sheet เรียบร้อยแล้ว (กรุณารอสักครู่)');
-    } catch (error) {
-        console.error("Sync Error:", error);
-        showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
-    } finally {
-        setIsSyncingSheet(false);
-    }
+            // 2. ส่งแบบ Fire-and-Forget (ไม่ต้อง await รอ Server ตอบกลับ)
+            fetch(targetUrl, {
+                method: 'POST',
+                mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload),
+                keepalive: true // พยายามส่งต่อแม้ User ปิด tab (รองรับเฉพาะ payload ขนาดเล็ก-กลาง)
+            }).catch(err => {
+                console.error("Background Network Dispatch Error:", err);
+            });
+            
+            // 3. ปลดล็อกหน้าจอทันที ไม่ต้องรอ Server ประมวลผลเสร็จ
+            showNotification('กำลังอัปเดตข้อมูลไปยัง Sheet ในเบื้องหลัง (เสร็จสิ้นใน 1-2 นาที)');
+        } catch (error) {
+            console.error("Sync Error:", error);
+            showNotification('เกิดข้อผิดพลาดในการเตรียมข้อมูล', 'error');
+        } finally {
+            setIsSyncingSheet(false);
+        }
+    }, 100);
   };
 
   const lookupEmployee = (id) => { 
