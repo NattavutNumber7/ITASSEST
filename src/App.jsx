@@ -4,7 +4,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimest
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning, Menu, ChevronLeft } from 'lucide-react';
 
 // นำเข้า Config และ Components
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
@@ -24,17 +24,19 @@ import BulkEditModal from './components/BulkEditModal.jsx';
 export default function App() {
   // --- สถานะ (States) ---
   const [user, setUser] = useState(null); 
-  const [isAdmin, setIsAdmin] = useState(false); // 🛡️ RBAC: State เช็คว่าเป็น Admin หรือไม่
+  const [isAdmin, setIsAdmin] = useState(false); 
   const [authLoading, setAuthLoading] = useState(true); 
   const [loginError, setLoginError] = useState(null); 
 
   const [assets, setAssets] = useState([]); 
   const [loading, setLoading] = useState(true); 
-  const [view, setView] = useState('dashboard');
+  const [view, setView] = useState('dashboard'); 
+  
+  // ✅ ตั้งค่าเริ่มต้น Sidebar: จอใหญ่เปิด, จอเล็กปิด
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
+  
   const [searchTerm, setSearchTerm] = useState(''); 
   
-  // ตัวกรอง
-  const [filterCategory, setFilterCategory] = useState('all'); 
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterBrand, setFilterBrand] = useState('all'); 
   const [filterDepartment, setFilterDepartment] = useState('all');
@@ -46,9 +48,9 @@ export default function App() {
   // สถานะอื่นๆ
   const [sheetUrl, setSheetUrl] = useState('');
   const [laptopSheetUrl, setLaptopSheetUrl] = useState('');
-  const [exportUrl, setExportUrl] = useState(''); // ✅ เพิ่ม state exportUrl
+  const [exportUrl, setExportUrl] = useState('');
   const [isSyncingLaptops, setIsSyncingLaptops] = useState(false);
-  const [isSyncingSheet, setIsSyncingSheet] = useState(false); // ✅ เพิ่ม state isSyncingSheet
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
 
   const [employees, setEmployees] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -56,7 +58,6 @@ export default function App() {
   const [openDropdownId, setOpenDropdownId] = useState(null); 
   const dropdownRef = useRef(null);
 
-  // ✅ State สำหรับการเลือกหลายรายการ (Bulk Select)
   const [selectedIds, setSelectedIds] = useState(new Set());
 
   // สถานะสำหรับ Modals ต่างๆ
@@ -84,7 +85,6 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
-        
         if (!userEmail.endsWith('@freshket.co')) {
            console.warn("Access Denied: Email domain not allowed");
            setLoginError({ text: 'ขออภัย ระบบอนุญาตเฉพาะอีเมล @freshket.co เท่านั้น', timestamp: Date.now() });
@@ -93,27 +93,16 @@ export default function App() {
            setIsAdmin(false);
         } else {
           setUser(currentUser);
-          
-          // 🛡️ RBAC: ตรวจสอบสิทธิ์ Admin จาก Firestore
           try {
-             // ใช้ Email (ตัวพิมพ์เล็ก) เป็น Document ID
              const userDocRef = doc(db, 'users', userEmail);
              const userDoc = await getDoc(userDocRef);
-             
-             if (userDoc.exists()) {
-                 const userData = userDoc.data();
-                 console.log("User Role Found:", userData.role); // 🔍 Debug Log
-                 if (userData.role === 'admin') {
-                     setIsAdmin(true);
-                 } else {
-                     setIsAdmin(false);
-                 }
+             if (userDoc.exists() && userDoc.data().role === 'admin') {
+                 setIsAdmin(true);
              } else {
-                 console.warn(`No user document found for: ${userEmail}. Assuming Viewer.`); // 🔍 Debug Log
                  setIsAdmin(false);
              }
           } catch (error) {
-             console.error("Error checking role (Permission denied?):", error); // 🔍 Debug Log
+             console.error("Error checking role:", error);
              setIsAdmin(false); 
           }
         }
@@ -130,10 +119,12 @@ export default function App() {
     const savedLaptopUrl = localStorage.getItem('it_asset_laptop_sheet_url');
     if (savedLaptopUrl) { setLaptopSheetUrl(savedLaptopUrl); }
 
-    const savedExportUrl = localStorage.getItem('it_asset_export_url'); // ✅ Load Export URL
+    const savedExportUrl = localStorage.getItem('it_asset_export_url');
     if (savedExportUrl) setExportUrl(savedExportUrl);
 
-    return () => unsubscribe();
+    return () => {
+        unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -149,7 +140,7 @@ export default function App() {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching data:", error);
-      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied หรือ Network Error)', 'error');
+      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
       setLoading(false);
     });
     return () => unsubscribeSnapshot();
@@ -165,23 +156,20 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Reset Selection เมื่อเปลี่ยน View
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [view, filterCategory, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
-
+  }, [view, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
 
   // --- Handlers ---
   const handleSaveSettings = () => { 
       if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่แก้ไขตั้งค่าได้', 'error'); return; }
-
       if (sheetUrl && !sheetUrl.startsWith('https://docs.google.com/')) {
           showNotification('ลิงก์ Google Sheet ไม่ถูกต้อง', 'error');
           return;
       }
       localStorage.setItem('it_asset_sheet_url', sheetUrl); 
       localStorage.setItem('it_asset_laptop_sheet_url', laptopSheetUrl); 
-      localStorage.setItem('it_asset_export_url', exportUrl); // ✅ Save Export URL
+      localStorage.setItem('it_asset_export_url', exportUrl);
       showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว'); 
       fetchEmployeesFromSheet(sheetUrl);
   };
@@ -197,7 +185,6 @@ export default function App() {
           if (!res.ok) throw new Error(); 
           const data = parseCSV(await res.text());
           setEmployees(data);
-          console.log("Employees Loaded:", data.length);
       } catch (e) { 
           console.error(e);
       } finally { setIsSyncing(false); } 
@@ -301,7 +288,6 @@ export default function App() {
     }
   };
 
-  // ✅ ฟังก์ชัน Sync ไป Google Sheet (แก้ไข: ส่ง Status เป็นภาษาไทย)
   const handleSyncToSheet = async () => {
     if (!exportUrl) {
         showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
@@ -312,7 +298,6 @@ export default function App() {
     setIsSyncingSheet(true);
     
     try {
-        // 1. เตรียมข้อมูล
         const payload = {
             assets: assets.map(a => ({
                 id: a.id,
@@ -320,7 +305,6 @@ export default function App() {
                 brand: a.brand || '',
                 serialNumber: a.serialNumber || '',
                 category: a.category || '',
-                // ✅ แก้ไขตรงนี้: แปลง ID เป็น Label ภาษาไทยก่อนส่ง
                 status: Object.values(STATUSES).find(s => s.id === a.status)?.label || a.status || '',
                 assignedTo: a.assignedTo || '', 
                 employeeId: a.employeeId || '',
@@ -336,10 +320,6 @@ export default function App() {
         const cleanUrl = exportUrl.trim();
         const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
         
-        console.log("Sending payload to Google Sheet...");
-
-        // 2. ส่งแบบปกติ (รอการส่งออกไป แต่ไม่รอ Response 200 OK เพราะ no-cors ซ่อน status)
-        // ⚠️ สำคัญ: เอา keepalive: true ออก เพราะจำกัดขนาดแค่ 64KB ซึ่งข้อมูล Asset มักจะเกิน
         await fetch(targetUrl, {
             method: 'POST',
             mode: 'no-cors', 
@@ -347,11 +327,10 @@ export default function App() {
             body: JSON.stringify(payload)
         });
         
-        // 3. แจ้งเตือนเมื่อส่ง Request ออกไปแล้ว
         showNotification('ส่งคำขออัปเดตข้อมูลไปยัง Sheet เรียบร้อยแล้ว');
     } catch (error) {
         console.error("Sync Error:", error);
-        showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล (Network Error)', 'error');
+        showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล', 'error');
     } finally {
         setIsSyncingSheet(false);
     }
@@ -385,6 +364,7 @@ export default function App() {
     try { 
       const safeData = {
           ...newAsset,
+          category: newAsset.category || (view !== 'dashboard' && view !== 'add' && view !== 'list' ? view : 'laptop'),
           name: sanitizeInput(newAsset.name),
           brand: sanitizeInput(newAsset.brand || ''),
           serialNumber: sanitizeInput(newAsset.serialNumber),
@@ -400,7 +380,7 @@ export default function App() {
       const docRef = await addDoc(collection(db, COLLECTION_NAME), safeData); 
       await logActivity('CREATE', { id: docRef.id, ...safeData }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
       setNewAsset({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false }); 
-      setView('list'); 
+      setView(safeData.category); 
       showNotification('เพิ่มสำเร็จ'); 
     } catch { showNotification('Failed', 'error'); } 
   };
@@ -414,12 +394,9 @@ export default function App() {
             const assetDocRef = doc(db, COLLECTION_NAME, assignModal.assetId);
             const assetDoc = await transaction.get(assetDocRef);
             
-            if (!assetDoc.exists()) {
-                throw "Document does not exist!";
-            }
+            if (!assetDoc.exists()) { throw "Document does not exist!"; }
 
             const currentData = assetDoc.data();
-
             let updateData = {};
             let logDetails = '';
 
@@ -569,18 +546,15 @@ export default function App() {
 
     try { 
         const safeReason = sanitizeInput(reason);
-
         await updateDoc(doc(db, COLLECTION_NAME, asset.id), {
             isDeleted: true,
             deletedAt: new Date().toISOString(),
             deletedBy: user.email,
             deleteReason: safeReason
         });
-        
         await logActivity('DELETE', asset, `ลบรายการออกจากระบบ (เหตุผล: ${safeReason})`); 
-        showNotification('ลบรายการสำเร็จ (ย้ายไปถังขยะ)'); 
+        showNotification('ลบรายการสำเร็จ'); 
     } catch (error) { 
-        console.error(error); 
         showNotification('เกิดข้อผิดพลาดในการลบ', 'error'); 
     } finally { 
         setDeleteModal({ open: false, asset: null }); 
@@ -640,7 +614,6 @@ export default function App() {
       showNotification('บันทึกการแก้ไขหมู่เรียบร้อยแล้ว');
       setSelectedIds(new Set());
     } catch (error) {
-      console.error(error);
       showNotification('เกิดข้อผิดพลาดในการแก้ไขหมู่', 'error');
     }
   };
@@ -657,7 +630,6 @@ export default function App() {
 
         const docRef = doc(db, COLLECTION_NAME, id);
         const updateData = { status: newStatus };
-        
         if (newStatus !== 'assigned') {
             updateData.assignedTo = null;
             updateData.employeeId = null;
@@ -667,7 +639,6 @@ export default function App() {
             updateData.isCentral = false;
             updateData.location = '';
         }
-
         batch.update(docRef, updateData);
 
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
@@ -683,11 +654,10 @@ export default function App() {
       });
 
       await batch.commit();
-      showNotification(`เปลี่ยนสถานะเป็น ${newStatus} เรียบร้อยแล้ว`);
+      showNotification(`เปลี่ยนสถานะเรียบร้อยแล้ว`);
       setBulkEditModal({ open: false });
       setSelectedIds(new Set());
     } catch (error) {
-      console.error(error);
       showNotification('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ', 'error');
     }
   };
@@ -703,15 +673,8 @@ export default function App() {
       Array.from(selectedIds).forEach((id) => {
         const asset = assets.find(a => a.id === id);
         if (!asset) return;
-        
         const docRef = doc(db, COLLECTION_NAME, id);
-        batch.update(docRef, {
-            isDeleted: true,
-            deletedAt: new Date().toISOString(),
-            deletedBy: user.email,
-            deleteReason: '[Bulk Delete]'
-        });
-
+        batch.update(docRef, { isDeleted: true, deletedAt: new Date().toISOString(), deletedBy: user.email, deleteReason: '[Bulk Delete]' });
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
         batch.set(logRef, {
             assetId: asset.id,
@@ -728,7 +691,6 @@ export default function App() {
       showNotification('ลบรายการที่เลือกเรียบร้อยแล้ว');
       setSelectedIds(new Set());
     } catch (error) {
-      console.error(error);
       showNotification('เกิดข้อผิดพลาดในการลบหมู่', 'error');
     }
   };
@@ -746,8 +708,9 @@ export default function App() {
           (a.assignedTo && a.assignedTo.toLowerCase().includes(term)) ||
           (a.employeeId && a.employeeId.toLowerCase().includes(term)) ||
           (a.location && a.location.toLowerCase().includes(term)); 
-    
-        const matchCategory = filterCategory === 'all' || a.category === filterCategory;
+        
+        const matchViewCategory = (view === 'dashboard' || view === 'add') ? true : a.category === view;
+
         const matchStatus = filterStatus === 'all' || a.status === filterStatus;
         const matchBrand = filterBrand === 'all' || a.brand === filterBrand;
         const matchDepartment = filterDepartment === 'all' || a.department === filterDepartment;
@@ -757,326 +720,351 @@ export default function App() {
         if (filterRental === 'rental') matchRental = a.isRental === true;
         if (filterRental === 'owned') matchRental = !a.isRental;
     
-        return matchSearch && matchCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
+        return matchSearch && matchViewCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
       });
-  }, [assets, searchTerm, filterCategory, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental]);
+  }, [assets, searchTerm, view, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental]);
 
-  const clearFilters = () => { setFilterCategory('all'); setFilterStatus('all'); setFilterBrand('all'); setFilterDepartment('all'); setFilterPosition('all'); setFilterRental('all'); setSearchTerm(''); };
-  const isFiltered = filterCategory !== 'all' || filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
+  const clearFilters = () => { setFilterStatus('all'); setFilterBrand('all'); setFilterDepartment('all'); setFilterPosition('all'); setFilterRental('all'); setSearchTerm(''); };
+  const isFiltered = filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div><span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span></div></div>;
   if (!user) return <Login message={loginError} />;
 
+  // ---- RENDER ----
   return (
-    <div className="min-h-screen font-sans text-slate-900 pb-20" style={{backgroundColor: COLORS.background}}>
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg text-white" style={{backgroundColor: COLORS.primary}}>
-              <img src={LOGO_URL} alt="Logo" className="w-6 h-6 object-contain filter brightness-0 invert" />
+    <div className="min-h-screen font-sans text-slate-900 bg-slate-50 flex overflow-hidden">
+      
+      {/* 🟢 SIDEBAR NAVIGATION (Toggleable) */}
+      <aside 
+        className={`
+            fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col
+            ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-r-0'}
+            lg:static
+        `}
+      >
+        {/* Logo Area */}
+        <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-100 bg-white shrink-0 min-w-[256px]">
+            <div className="p-1.5 rounded-lg text-white" style={{backgroundColor: COLORS.primary}}>
+              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 object-contain filter brightness-0 invert" />
             </div>
-            <div><h1 className="text-xl font-bold">IT Asset Management</h1><div className="text-xs text-slate-500">ระบบเบิก-จ่ายทรัพย์สิน</div></div>
-          </div>
-          <div className="flex gap-2 items-center">
-            <div className="text-right mr-2 hidden md:block">
-                <p className="text-xs text-slate-500">เข้าใช้งานโดย</p>
-                <div className="flex items-center justify-end gap-1">
-                    <p className="text-sm font-semibold text-slate-700">{user.email}</p>
-                    {isAdmin ? (
-                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold border border-red-200 flex items-center gap-0.5">
-                            <ShieldAlert size={10} /> ADMIN
-                        </span>
-                    ) : (
-                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full border border-slate-200">
-                            VIEWER
-                        </span>
-                    )}
+            <div>
+                <h1 className="text-lg font-bold text-slate-800 tracking-tight">IT Asset</h1>
+                <div className="text-[10px] text-slate-400 -mt-1">Management System</div>
+            </div>
+        </div>
+
+        {/* Menu Items */}
+        <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1 min-w-[256px]">
+            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Main Menu</p>
+            
+            <button onClick={() => { setView('dashboard'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'dashboard' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}>
+                <LayoutDashboard size={18} /> ภาพรวม (Dashboard)
+            </button>
+
+            <div className="pt-4 pb-2">
+                <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Assets Category</p>
+                {CATEGORIES.map(cat => (
+                    <button 
+                        key={cat.id}
+                        onClick={() => { setView(cat.id); if(window.innerWidth<1024) setIsSidebarOpen(false); }} 
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === cat.id ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        {cat.icon} {cat.name}
+                    </button>
+                ))}
+            </div>
+
+            {isAdmin && (
+                <div className="pt-4 pb-2">
+                    <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Admin Tools</p>
+                    <button onClick={() => { setView('add'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'add' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}>
+                        <Plus size={18} /> เพิ่มรายการใหม่
+                    </button>
+                    <button onClick={() => setShowDeletedLog(true)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                        <Trash2 size={18} /> ประวัติการลบ
+                    </button>
+                </div>
+            )}
+        </div>
+
+        {/* User Footer */}
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 min-w-[256px]">
+            <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">
+                    {user.email.substring(0,2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 truncate">{user.email}</p>
+                    <p className="text-[10px] text-slate-500 uppercase">{isAdmin ? 'Administrator' : 'Viewer'}</p>
                 </div>
             </div>
-            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="ตั้งค่า"><Settings size={20} /></button>
-            <div className="h-6 w-px bg-slate-200 mx-1"></div>
-            <button onClick={handleLogout} className="p-2 hover:bg-red-50 rounded-lg flex items-center gap-2" style={{color: COLORS.secondary}} title="ออกจากระบบ"><LogOut size={20} /></button>
-          </div>
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-white hover:text-red-600 hover:border-red-200 transition-all">
+                <LogOut size={14} /> ออกจากระบบ
+            </button>
         </div>
-      </div>
+      </aside>
 
-      <div className="bg-white border-b border-slate-200 py-3 mb-6">
-         <div className="max-w-[1600px] mx-auto px-4 flex justify-between items-center overflow-x-auto">
-            <div className="flex gap-2">
-               <button onClick={() => setView('dashboard')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'dashboard' ? 'bg-[#008065]/10 text-[#008065]' : 'text-slate-600 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> ภาพรวม</button>
-               <button onClick={() => setView('list')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'list' || view === 'add' ? 'bg-[#008065]/10 text-[#008065]' : 'text-slate-600 hover:bg-slate-50'}`}><List size={18} /> รายการทรัพย์สิน</button>
-            </div>
-            <div className="flex gap-2">
-                {(view === 'list' || view === 'add') && ( <button onClick={() => setShowDeletedLog(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium transition-colors whitespace-nowrap"><Trash2 size={16} className="text-red-500" /> <span className="hidden sm:inline">ประวัติการลบ</span></button> )}
+      {/* 🔴 OVERLAY for Mobile Sidebar */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+      )}
+
+      {/* 🟢 MAIN CONTENT AREA */}
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+        
+        {/* Top Bar */}
+        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 lg:px-8 shrink-0">
+            <div className="flex items-center gap-4">
+                {/* ปุ่มเปิด/ปิด Sidebar (แสดงเสมอ) */}
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors">
+                    {isSidebarOpen ? <ChevronLeft size={24} /> : <Menu size={24} />}
+                </button>
                 
-                {/* ✅ เพิ่มปุ่ม Export Group */}
-                {view === 'list' && (
+                <h2 className="text-xl font-bold text-slate-800 truncate">
+                    {view === 'dashboard' ? 'Dashboard' : view === 'add' ? 'Add New Asset' : CATEGORIES.find(c => c.id === view)?.name || 'รายการทรัพย์สิน'}
+                </h2>
+            </div>
+            
+            <div className="flex items-center gap-2">
+                {view !== 'dashboard' && view !== 'add' && (
                     <>
                         <button 
-                            onClick={() => exportToCSV(assets)}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 text-sm font-medium transition-colors whitespace-nowrap"
-                            title="ดาวน์โหลดไฟล์ CSV"
+                            onClick={() => exportToCSV(filteredAssets)}
+                            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 text-sm font-medium transition-all"
+                            title="Export CSV"
                         >
-                            <FileSpreadsheet size={16} className="text-green-600" /> 
-                            <span className="hidden sm:inline">CSV</span>
+                            <FileSpreadsheet size={18} className="text-green-600" /> 
+                            <span className="hidden lg:inline">CSV</span>
                         </button>
                         
-                        <button 
-                            onClick={handleSyncToSheet}
-                            disabled={isSyncingSheet}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-white text-sm font-medium transition-colors whitespace-nowrap shadow-sm ${isSyncingSheet ? 'opacity-70 cursor-wait' : 'hover:opacity-90'}`}
-                            style={{backgroundColor: COLORS.secondary}}
-                            title="อัปเดตข้อมูลไปที่ Google Sheet บัญชี"
-                        >
-                            <CloudLightning size={16} className={isSyncingSheet ? "animate-pulse" : ""} /> 
-                            <span className="hidden sm:inline">{isSyncingSheet ? 'Syncing...' : 'Update Sheet'}</span>
-                        </button>
+                        {isAdmin && (
+                            <button 
+                                onClick={handleSyncToSheet}
+                                disabled={isSyncingSheet}
+                                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 text-sm font-medium transition-all"
+                                title="Update to Google Sheet"
+                            >
+                                <CloudLightning size={18} className={`text-orange-500 ${isSyncingSheet ? "animate-pulse" : ""}`} /> 
+                                <span className="hidden lg:inline">{isSyncingSheet ? 'Syncing...' : 'Update Sheet'}</span>
+                            </button>
+                        )}
                     </>
                 )}
-
-                {/* 🛡️ UI Hiding: Show Add button only for Admin */}
-                {view === 'list' && isAdmin && ( <button onClick={() => setView('add')} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 text-sm font-medium transition-colors shadow-sm whitespace-nowrap" style={{backgroundColor: COLORS.primary}}><Plus size={18} /> เพิ่มรายการ</button> )}
                 
-                {view === 'add' && ( <button onClick={() => setView('list')} className="text-slate-500 hover:text-slate-700 text-sm px-4">ยกเลิก</button> )}
+                <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Settings">
+                    <Settings size={20} />
+                </button>
             </div>
-         </div>
-      </div>
+        </header>
 
-      <div className="max-w-[1600px] mx-auto px-4">
-        {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white`} style={{backgroundColor: notification.type === 'error' ? COLORS.error : COLORS.primary}}>{notification.message}</div>}
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8">
+            
+            {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white animate-fade-in`} style={{backgroundColor: notification.type === 'error' ? COLORS.error : COLORS.primary}}>{notification.message}</div>}
 
-        {view === 'dashboard' && <Dashboard assets={assets} />}
+            {view === 'dashboard' && <Dashboard assets={assets} />}
 
-        {view === 'list' && (
-          <div className="space-y-4 animate-fade-in">
-            <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input type="text" placeholder="ค้นหา...(ชื่อทรัพย์สิน,รหัสพนักงาน,หมายเลขทรัพย์สิน" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all" style={{focusBorderColor: COLORS.primary}} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              </div>
-              <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto max-w-full">
-                  <div className="flex items-center gap-2 px-2 text-slate-400 shrink-0"><Filter size={16} /><span className="text-xs font-medium uppercase hidden sm:inline">Filter</span></div>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="หมวดหมู่"><option value="all">ทุกหมวดหมู่</option>{CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ยี่ห้อ"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="แผนก"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ตำแหน่ง"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ประเภทเครื่อง"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
-                  <div className="h-4 w-px bg-slate-300"></div>
-                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="สถานะ"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
-                  {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors" title="ล้างตัวกรอง"><X size={14} /></button>)}
-              </div>
-            </div>
-
-            {/* ✅ Bulk Action Bar (แสดงเมื่อมีการเลือกรายการ) */}
-            {/* 🛡️ UI Hiding: Show Bulk Actions only for Admin */}
-            {selectedIds.size > 0 && isAdmin && (
-              <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl flex flex-col sm:flex-row items-center justify-between animate-fade-in shadow-sm gap-3">
-                <div className="flex items-center gap-2 text-blue-800 font-medium text-sm">
-                  <div className="bg-white p-1 rounded border border-blue-200"><CheckSquare size={18} className="text-blue-600"/></div>
-                  <span>เลือกอยู่ <span className="font-bold text-lg mx-1">{selectedIds.size}</span> รายการ</span>
+            {view !== 'dashboard' && view !== 'add' && (
+            <div className="space-y-4 animate-fade-in max-w-[1600px] mx-auto">
+                
+                {/* Filter Bar */}
+                <div className="flex flex-col xl:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <div className="flex-1 relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input type="text" placeholder="ค้นหา... (Serial, Name, Owner, Location)" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all focus:border-emerald-500 focus:ring-emerald-500/20" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto max-w-full">
+                        <div className="flex items-center gap-2 px-2 text-slate-400 shrink-0"><Filter size={16} /><span className="text-xs font-medium uppercase hidden sm:inline">Filter</span></div>
+                        <div className="h-4 w-px bg-slate-300"></div>
+                        <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ยี่ห้อ"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
+                        <div className="h-4 w-px bg-slate-300"></div>
+                        <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="แผนก"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                        <div className="h-4 w-px bg-slate-300"></div>
+                        <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ตำแหน่ง"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                        <div className="h-4 w-px bg-slate-300"></div>
+                        <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ประเภทเครื่อง"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
+                        <div className="h-4 w-px bg-slate-300"></div>
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="สถานะ"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+                        {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors" title="ล้างตัวกรอง"><X size={14} /></button>)}
+                    </div>
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <div className="text-xs text-blue-600/70 font-semibold uppercase mr-1 hidden sm:block">Bulk Actions:</div>
-                  <button 
-                    onClick={() => setBulkEditModal({ open: true })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
-                  >
-                    <Pencil size={14}/> เปลี่ยนสถานะ
-                  </button>
-                  <button 
-                    onClick={() => handleBulkEdit('isRental', true, 'ตั้งเป็นเครื่องเช่า (Rental)')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-sm hover:bg-purple-50 hover:border-purple-300 transition-all shadow-sm"
-                  >
-                    <Tag size={14}/> ตั้งเป็นเครื่องเช่า
-                  </button>
-                  <button 
-                    onClick={() => handleBulkEdit('isRental', false, 'ตั้งเป็นเครื่องบริษัท (Owned)')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
-                  >
-                    <Box size={14}/> ตั้งเป็นเครื่องบริษัท
-                  </button>
-                  <div className="h-6 w-px bg-blue-200 mx-1 hidden sm:block"></div>
-                  <button 
-                    onClick={handleBulkDelete}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 hover:border-red-300 transition-all shadow-sm"
-                  >
-                    <Trash2 size={14}/> ลบรายการ
-                  </button>
-                </div>
-              </div>
-            )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style={{ minHeight: '400px' }}>
-              {loading ? <div className="p-12 text-center text-slate-500">Loading...</div> : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
-                      <tr>
-                        {/* ✅ Checkbox Header */}
-                        <th className="px-4 py-4 w-10 text-center">
-                          <button 
-                            onClick={() => handleSelectAll(filteredAssets)} 
-                            className="text-slate-400 hover:text-slate-600 focus:outline-none"
-                            disabled={!isAdmin} // 🛡️ Disable for non-admin
-                          >
-                            {filteredAssets.length > 0 && selectedIds.size === filteredAssets.length ? (
-                              <CheckSquare size={18} className={isAdmin ? "text-blue-600" : "text-slate-300"} />
-                            ) : (
-                              <Square size={18} className={!isAdmin ? "cursor-not-allowed text-slate-200" : ""} />
-                            )}
-                          </button>
-                        </th>
-                        <th className="px-4 py-4">ทรัพย์สิน</th>
-                        <th className="px-4 py-4">สถานะ</th>
-                        <th className="px-4 py-4">ผู้ถือครอง</th>
-                        <th className="px-4 py-4">ตำแหน่ง</th> 
-                        <th className="px-4 py-4">แผนก</th>
-                        <th className="px-4 py-4 text-right">จัดการ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredAssets.length > 0 ? filteredAssets.map(asset => (
-                        <tr key={asset.id} className={`hover:bg-slate-50 align-top transition-colors ${selectedIds.has(asset.id) ? 'bg-blue-50/30' : ''}`}>
-                          {/* ✅ Checkbox Row */}
-                          <td className="px-4 py-4 text-center">
-                            <button 
-                              onClick={() => handleSelectOne(asset.id)}
-                              className="focus:outline-none"
-                              disabled={!isAdmin} // 🛡️ Disable for non-admin
-                            >
-                              {selectedIds.has(asset.id) ? (
-                                <CheckSquare size={18} className="text-blue-600" />
-                              ) : (
-                                <Square size={18} className={`text-slate-300 ${isAdmin ? 'hover:text-slate-400' : 'cursor-not-allowed opacity-50'}`} />
-                              )}
+                {/* Bulk Action Bar */}
+                {selectedIds.size > 0 && isAdmin && (
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl flex flex-col sm:flex-row items-center justify-between animate-fade-in shadow-sm gap-3">
+                    <div className="flex items-center gap-2 text-blue-800 font-medium text-sm">
+                    <div className="bg-white p-1 rounded border border-blue-200"><CheckSquare size={18} className="text-blue-600"/></div>
+                    <span>เลือกอยู่ <span className="font-bold text-lg mx-1">{selectedIds.size}</span> รายการ</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                    <button onClick={() => setBulkEditModal({ open: true })} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 transition-all shadow-sm"><Pencil size={14}/> เปลี่ยนสถานะ</button>
+                    <button onClick={() => handleBulkEdit('isRental', true, 'ตั้งเป็นเครื่องเช่า (Rental)')} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-sm hover:bg-purple-50 transition-all shadow-sm"><Tag size={14}/> ตั้งเป็นเครื่องเช่า</button>
+                    <button onClick={() => handleBulkEdit('isRental', false, 'ตั้งเป็นเครื่องบริษัท (Owned)')} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50 transition-all shadow-sm"><Box size={14}/> ตั้งเป็นเครื่องบริษัท</button>
+                    <div className="h-6 w-px bg-blue-200 mx-1 hidden sm:block"></div>
+                    <button onClick={handleBulkDelete} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-all shadow-sm"><Trash2 size={14}/> ลบรายการ</button>
+                    </div>
+                </div>
+                )}
+
+                {/* Table */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
+                {loading ? <div className="p-12 text-center text-slate-500">Loading...</div> : (
+                    <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold sticky top-0 z-10">
+                        <tr>
+                            <th className="px-4 py-4 w-10 text-center">
+                            <button onClick={() => handleSelectAll(filteredAssets)} className="text-slate-400 hover:text-slate-600 focus:outline-none" disabled={!isAdmin}>
+                                {filteredAssets.length > 0 && selectedIds.size === filteredAssets.length ? <CheckSquare size={18} className={isAdmin ? "text-blue-600" : "text-slate-300"} /> : <Square size={18} className={!isAdmin ? "cursor-not-allowed text-slate-200" : ""} />}
                             </button>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex gap-3">
-                              <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
-                              <div>
-                                <div className="font-medium flex items-center gap-2">
-                                  {asset.name} 
-                                  {asset.brand && <span className="text-[10px] text-slate-500 font-normal bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{asset.brand}</span>}
-                                  {asset.isCentral && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-0.5"><Building2 size={10}/> กลาง</span>}
-                                  {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
-                                </div>
-                                <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
-                          <td className="px-4 py-4">
-                              {asset.isCentral ? (
-                                  <div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>
-                              ) : asset.status === 'assigned' ? (
-                                  <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>
-                              ) : '-'}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
-                          <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
-                          
-                          <td className="px-4 py-4 text-right relative">
-                             <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
-                             {openDropdownId === asset.id && (
-                                 <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-slate-200 overflow-hidden" style={{ marginRight: '1.5rem', marginTop: '-10px' }}>
-                                    <div className="py-1">
-                                        <button onClick={() => { setHistoryModal({ open: true, asset: asset }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <History size={16} className="text-blue-600"/> ประวัติการใช้งาน </button>
-                                        <div className="border-t border-slate-100 my-1"></div>
-                                        
-                                        {/* 🛡️ UI Hiding: Show Actions only for Admin */}
-                                        {isAdmin ? (
-                                            <>
-                                                {asset.isCentral ? ( 
-                                                    <> 
-                                                        <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <UserPlus size={16} style={{color: COLORS.primary}}/> เปลี่ยนเป็นพนักงานถือ </button> 
-                                                        <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> ส่งคืนคลัง IT </button> 
-                                                    </> 
-                                                ) : (
-                                                    <>
-                                                        {asset.status === 'available' && ( <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> )}
-                                                        {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
-                                                    </>
-                                                )}
-                                                {(['broken','repair','lost','pending_vendor'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
-                                                <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
-                                                <div className="border-t border-slate-100 my-1"></div>
-                                                <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
-                                            </>
-                                        ) : (
-                                            <div className="px-4 py-2 text-xs text-slate-400 italic text-center">
-                                                View Only Mode
-                                            </div>
-                                        )}
-                                    </div>
-                                 </div>
-                             )}
-                          </td>
+                            </th>
+                            <th className="px-4 py-4">ทรัพย์สิน</th>
+                            <th className="px-4 py-4">สถานะ</th>
+                            <th className="px-4 py-4">ผู้ถือครอง</th>
+                            <th className="px-4 py-4">ตำแหน่ง</th> 
+                            <th className="px-4 py-4">แผนก</th>
+                            <th className="px-4 py-4 text-right">จัดการ</th>
                         </tr>
-                      )) : (
-                        <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">ไม่พบข้อมูลที่ค้นหา</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                        {filteredAssets.length > 0 ? filteredAssets.map(asset => (
+                            <tr key={asset.id} className={`hover:bg-slate-50 align-top transition-colors ${selectedIds.has(asset.id) ? 'bg-blue-50/30' : ''}`}>
+                            <td className="px-4 py-4 text-center">
+                                <button onClick={() => handleSelectOne(asset.id)} className="focus:outline-none" disabled={!isAdmin}>
+                                {selectedIds.has(asset.id) ? <CheckSquare size={18} className="text-blue-600" /> : <Square size={18} className={`text-slate-300 ${isAdmin ? 'hover:text-slate-400' : 'cursor-not-allowed opacity-50'}`} />}
+                                </button>
+                            </td>
+                            <td className="px-4 py-4">
+                                <div className="flex gap-3">
+                                <div className={`p-2 rounded-lg text-slate-600 ${asset.status === 'broken' ? 'bg-red-50 text-red-500' : 'bg-slate-100'}`}>{CATEGORIES.find(c => c.id === asset.category)?.icon}</div>
+                                <div>
+                                    <div className="font-medium flex items-center gap-2">
+                                    {asset.name} 
+                                    {asset.brand && <span className="text-[10px] text-slate-500 font-normal bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{asset.brand}</span>}
+                                    {asset.isCentral && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-0.5"><Building2 size={10}/> กลาง</span>}
+                                    {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
+                                    </div>
+                                    <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
+                                </div>
+                                </div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
+                            <td className="px-4 py-4">
+                                {asset.isCentral ? (
+                                    <div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>
+                                ) : asset.status === 'assigned' ? (
+                                    <div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>
+                                ) : '-'}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
+                            <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
+                            
+                            <td className="px-4 py-4 text-right relative">
+                                <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
+                                {openDropdownId === asset.id && (
+                                    <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-slate-200 overflow-hidden" style={{ marginRight: '1.5rem', marginTop: '-10px' }}>
+                                        <div className="py-1">
+                                            <button onClick={() => { setHistoryModal({ open: true, asset: asset }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <History size={16} className="text-blue-600"/> ประวัติการใช้งาน </button>
+                                            <div className="border-t border-slate-100 my-1"></div>
+                                            {isAdmin ? (
+                                                <>
+                                                    {asset.isCentral ? ( 
+                                                        <> 
+                                                            <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <UserPlus size={16} style={{color: COLORS.primary}}/> เปลี่ยนเป็นพนักงานถือ </button> 
+                                                            <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> ส่งคืนคลัง IT </button> 
+                                                        </> 
+                                                    ) : (
+                                                        <>
+                                                            {asset.status === 'available' && ( <button onClick={() => openAssignModal(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowRight size={16} style={{color: COLORS.primary}}/> เบิกอุปกรณ์ </button> )}
+                                                            {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
+                                                        </>
+                                                    )}
+                                                    {(['broken','repair','lost','pending_vendor'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
+                                                    <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
+                                                    <div className="border-t border-slate-100 my-1"></div>
+                                                    <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
+                                                </>
+                                            ) : (
+                                                <div className="px-4 py-2 text-xs text-slate-400 italic text-center">View Only Mode</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">ไม่พบข้อมูลที่ค้นหา</td></tr>
+                        )}
+                        </tbody>
+                    </table>
+                    </div>
+                )}
                 </div>
-              )}
             </div>
-          </div>
-        )}
-        
-        {view === 'add' && isAdmin && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
-             <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
-             <form onSubmit={handleAddAsset} className="space-y-4">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div>
-                    <label className="block text-sm font-medium mb-1">ชื่อทรัพย์สิน</label>
-                    <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="เช่น MacBook Pro 14" />
-                 </div>
-                 <div>
-                    <label className="block text-sm font-medium mb-1">ยี่ห้อ (Brand)</label>
-                    <input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="เช่น Apple, Dell, Lenovo" />
-                 </div>
-               </div>
-               
-               <div>
-                  <label className="block text-sm font-medium mb-1">Serial Number</label>
-                  <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
-               </div>
+            )}
+            
+            {view === 'add' && isAdmin && (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
+                <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
+                <form onSubmit={handleAddAsset} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">ชื่อทรัพย์สิน</label>
+                        <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="เช่น MacBook Pro 14" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">ยี่ห้อ (Brand)</label>
+                        <input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="เช่น Apple, Dell, Lenovo" />
+                    </div>
+                </div>
+                
+                <div>
+                    <label className="block text-sm font-medium mb-1 text-slate-700">Serial Number</label>
+                    <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
+                </div>
 
-               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                   <input type="checkbox" id="isRental" className="w-4 h-4" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> 
-                   <label htmlFor="isRental" className="text-sm cursor-pointer select-none">เป็นเครื่องเช่า (Rental)</label>
-               </div>
+                <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <input type="checkbox" id="isRental" className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> 
+                    <label htmlFor="isRental" className="text-sm cursor-pointer select-none text-slate-700 font-medium">เป็นเครื่องเช่า (Rental)</label>
+                </div>
 
-               <div>
-                 <label className="block text-sm font-medium mb-1">หมวดหมู่</label>
-                 <div className="grid grid-cols-5 gap-2">{CATEGORIES.map(c => <button key={c.id} type="button" onClick={() => setNewAsset({...newAsset, category: c.id})} className={`p-3 border rounded text-xs flex flex-col items-center ${newAsset.category === c.id ? '' : 'hover:bg-slate-50'}`} style={newAsset.category === c.id ? {borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}10`, color: COLORS.primary} : {}}>{c.icon} {c.name}</button>)}</div>
-               </div>
-               <button type="submit" className="w-full text-white py-2 rounded-lg hover:opacity-90 transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>บันทึก</button>
-             </form>
-          </div>
-        )}
-      </div>
+                <div>
+                    <label className="block text-sm font-medium mb-2 text-slate-700">หมวดหมู่</label>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {CATEGORIES.map(c => (
+                            <button 
+                                key={c.id} 
+                                type="button" 
+                                onClick={() => setNewAsset({...newAsset, category: c.id})} 
+                                className={`p-3 border rounded-xl text-xs flex flex-col items-center justify-center gap-2 transition-all ${newAsset.category === c.id ? 'ring-2 ring-offset-1 bg-emerald-50' : 'hover:bg-slate-50 bg-white'}`} 
+                                style={newAsset.category === c.id ? {borderColor: COLORS.primary, color: COLORS.primary} : {borderColor: '#e2e8f0'}}
+                            >
+                                {c.icon} <span className="text-center">{c.name}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <button type="submit" className="w-full text-white py-2.5 rounded-xl hover:opacity-90 transition-all shadow-md font-medium mt-4" style={{backgroundColor: COLORS.primary}}>บันทึกข้อมูล</button>
+                </form>
+            </div>
+            )}
+        </div>
+      </main>
+
       {/* Modals ... */}
       <SettingsModal 
          show={showSettings} 
          onClose={() => setShowSettings(false)} 
          sheetUrl={sheetUrl} 
          setSheetUrl={setSheetUrl} 
-         laptopSheetUrl={laptopSheetUrl} // Pass prop
-         setLaptopSheetUrl={setLaptopSheetUrl} // Pass prop
-         exportUrl={exportUrl} // ✅ Pass
-         setExportUrl={setExportUrl} // ✅ Pass
+         laptopSheetUrl={laptopSheetUrl}
+         setLaptopSheetUrl={setLaptopSheetUrl}
+         exportUrl={exportUrl}
+         setExportUrl={setExportUrl}
          onSave={handleSaveSettings} 
-         onSyncLaptops={handleSyncLaptops} // Pass prop
+         onSyncLaptops={handleSyncLaptops}
          isSyncing={isSyncing}
-         isSyncingLaptops={isSyncingLaptops} // Pass prop
+         isSyncingLaptops={isSyncingLaptops}
       />
       <AssignModal show={assignModal.open} onClose={() => setAssignModal({ ...assignModal, open: false })} onSubmit={handleAssignSubmit} data={assignModal} setData={setAssignModal} onLookup={lookupEmployee} empStatus={assignModal.empStatus} />
       <EditModal show={editModal.open} onClose={() => setEditModal({ open: false, asset: null })} onSubmit={handleEditSubmit} data={editModal.asset} setData={(val) => setEditModal({ ...editModal, asset: val })} />

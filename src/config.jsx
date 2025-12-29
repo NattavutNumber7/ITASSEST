@@ -1,4 +1,4 @@
-import { Laptop, Monitor, Mouse, Smartphone, Headphones } from 'lucide-react';
+import { Laptop, Monitor, Mouse, Smartphone, Headphones, Printer, Battery, ScanBarcode, PcCase } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'; 
 import { getFirestore } from 'firebase/firestore';
@@ -26,9 +26,9 @@ export const LOGS_COLLECTION_NAME = 'asset_logs';
 export const ORIGINAL_DOC_URL = import.meta.env.VITE_ORIGINAL_DOC_URL || "#";
 
 export const COMPANY_INFO = {
-  companyName: import.meta.env.VITE_COMPANY_NAME,
-  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME,
-  witnessName: import.meta.env.VITE_WITNESS_NAME 
+  companyName: import.meta.env.VITE_COMPANY_NAME || "บริษัท โพลาร์ แบร์ มิชชั่น จำกัด",
+  authorizedName: import.meta.env.VITE_AUTHORIZED_NAME || "นายชัยวัฒน์ อมรรุ่งศิริ",
+  witnessName: import.meta.env.VITE_WITNESS_NAME || "นายณัฐวุฒิ ลามันจิตร์"
 };
 
 export const LOGO_URL = "/FRESHKET LOGO-01.png";
@@ -45,20 +45,24 @@ export const COLORS = {
   success: '#008065'
 };
 
+// ✅ ปรับปรุงหมวดหมู่ใหม่ตามความต้องการ
 export const CATEGORIES = [
-  { id: 'laptop', name: 'Laptop / Notebook', icon: <Laptop size={18} /> },
+  { id: 'laptop', name: 'Laptop / PC', icon: <Laptop size={18} /> },
   { id: 'monitor', name: 'Monitor', icon: <Monitor size={18} /> },
-  { id: 'peripheral', name: 'Mouse / Keyboard', icon: <Mouse size={18} /> },
-  { id: 'mobile', name: 'Phone / Tablet', icon: <Smartphone size={18} /> },
-  { id: 'accessory', name: 'Accessory', icon: <Headphones size={18} /> },
+  { id: 'mobile', name: 'Mobile', icon: <Smartphone size={18} /> },
+  { id: 'scanner', name: 'Scanner', icon: <Printer size={18} /> }, // ใช้ icon Printer แทน Scanner
+  { id: 'power_station', name: 'Power Station', icon: <Battery size={18} /> },
+  { id: 'handheld', name: 'Handheld Device', icon: <ScanBarcode size={18} /> },
+  // สามารถเปิดคอมเมนต์ด้านล่างถ้ายังต้องการหมวดหมู่อื่นๆ
+  // { id: 'peripheral', name: 'Peripheral', icon: <Mouse size={18} /> },
+  // { id: 'accessory', name: 'Accessory', icon: <Headphones size={18} /> },
 ];
 
-// ✅ เพิ่มสถานะ PENDING_VENDOR ที่นี่
 export const STATUSES = {
   AVAILABLE: { id: 'available', label: 'ว่าง (พร้อมใช้)', color: 'bg-[#008065]/10 text-[#008065] border-[#008065]/30' },
   ASSIGNED: { id: 'assigned', label: 'ใช้งานอยู่', color: 'bg-[#007c7c]/10 text-[#007c7c] border-[#007c7c]/30' },
   BROKEN: { id: 'broken', label: 'ชำรุด', color: 'bg-red-50 text-red-700 border-red-200' },
   REPAIR: { id: 'repair', label: 'ส่งซ่อม', color: 'bg-[#ff6600]/10 text-[#ff6600] border-[#ff6600]/30' },
-  PENDING_VENDOR: { id: 'pending_vendor', label: 'รอส่งคืน Vendor', color: 'bg-purple-100 text-purple-700 border-purple-300' }, // เพิ่มใหม่
+  PENDING_VENDOR: { id: 'pending_vendor', label: 'รอส่งคืน Vendor', color: 'bg-purple-100 text-purple-700 border-purple-300' },
   LOST: { id: 'lost', label: 'สูญหาย', color: 'bg-slate-100 text-slate-500 border-slate-300' },
 };
