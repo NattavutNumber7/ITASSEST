@@ -1,4 +1,4 @@
-import { LOGO_URL, COMPANY_INFO } from '../config.jsx';
+import { LOGO_URL, COMPANY_INFO, STATUSES } from '../config.jsx';
 
 // ✅ ฟังก์ชันช่วยเติมเลข 0 ให้ครบ 5-6 หลัก (สำหรับรหัสพนักงาน)
 const formatEmployeeId = (id) => {
@@ -279,12 +279,15 @@ export const exportToCSV = (assets) => {
   ];
 
   const rows = assets.map(asset => {
+    // ✅ แปลง Status ID เป็น Label ภาษาไทย
+    const statusLabel = Object.values(STATUSES).find(s => s.id === asset.status)?.label || asset.status || '';
+
     return [
       `"${asset.name || ''}"`,
       `"${asset.brand || ''}"`,
       `"${asset.serialNumber || ''}"`,
       `"${asset.category || ''}"`,
-      `"${asset.status || ''}"`,
+      `"${statusLabel}"`, // ใช้ Label ภาษาไทย
       `"${asset.assignedTo || ''}"`,
       `"${asset.employeeId || ''}"`,
       `"${asset.department || ''}"`,

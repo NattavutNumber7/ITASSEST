@@ -301,7 +301,7 @@ export default function App() {
     }
   };
 
-  // ✅ ฟังก์ชัน Sync ไป Google Sheet (แก้ไข: ตัด keepalive และใช้ async/await)
+  // ✅ ฟังก์ชัน Sync ไป Google Sheet (แก้ไข: ส่ง Status เป็นภาษาไทย)
   const handleSyncToSheet = async () => {
     if (!exportUrl) {
         showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
@@ -320,7 +320,8 @@ export default function App() {
                 brand: a.brand || '',
                 serialNumber: a.serialNumber || '',
                 category: a.category || '',
-                status: a.status || '',
+                // ✅ แก้ไขตรงนี้: แปลง ID เป็น Label ภาษาไทยก่อนส่ง
+                status: Object.values(STATUSES).find(s => s.id === a.status)?.label || a.status || '',
                 assignedTo: a.assignedTo || '', 
                 employeeId: a.employeeId || '',
                 department: a.department || '',
