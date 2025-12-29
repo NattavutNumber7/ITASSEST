@@ -1,8 +1,12 @@
-import { Pencil } from 'lucide-react';
+import { Pencil, Smartphone } from 'lucide-react';
 import { STATUSES, COLORS } from '../config.jsx';
 
 const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
   if (!show || !data) return null;
+
+  // เช็คว่าเป็นหมวด Mobile หรือมีเบอร์โทรอยู่แล้วหรือไม่
+  const isMobile = data.category === 'mobile' || data.phoneNumber;
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
@@ -10,18 +14,41 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อทรัพย์สิน</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {isMobile ? 'รุ่น (Model)' : 'ชื่อทรัพย์สิน'}
+              </label>
               <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.name} onChange={e => setData({ ...data, name: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ยี่ห้อ (Brand)</label>
-              <input type="text" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.brand || ''} onChange={e => setData({ ...data, brand: e.target.value })} placeholder="เช่น Apple, Dell" />
+              <input type="text" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.brand || ''} onChange={e => setData({ ...data, brand: e.target.value })} />
             </div>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
-            <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.serialNumber} onChange={e => setData({ ...data, serialNumber: e.target.value })} />
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {isMobile ? 'IMEI / Serial Number' : 'Serial Number'}
+                </label>
+                <input type="text" required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" style={{borderColor: COLORS.primary}} value={data.serialNumber} onChange={e => setData({ ...data, serialNumber: e.target.value })} />
+            </div>
+            
+            {/* ✅ แสดงช่องเบอร์โทรศัพท์ถ้าเป็น Mobile */}
+            {isMobile && (
+                <div className="animate-fade-in">
+                    <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+                        <Smartphone size={14}/> เบอร์โทรศัพท์ (Phone No)
+                    </label>
+                    <input 
+                        type="text" 
+                        className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-1" 
+                        style={{borderColor: COLORS.primary}} 
+                        value={data.phoneNumber || ''} 
+                        onChange={e => setData({ ...data, phoneNumber: e.target.value })} 
+                        placeholder="0XX-XXX-XXXX"
+                    />
+                </div>
+            )}
           </div>
 
           <div>
@@ -59,7 +86,6 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
                 />
                 <label htmlFor="editIsCentral" className="text-sm font-medium text-slate-700 cursor-pointer">เป็นเครื่องกลาง (Central)</label>
             </div>
-             {/* ✅ ช่องกรอก Location จะแสดงเมื่อติ๊กเครื่องกลาง */}
              {data.isCentral && (
                    <div className="animate-fade-in pl-6">
                         <input 

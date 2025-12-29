@@ -33,6 +33,7 @@ const BulkEditModal = ({ show, onClose, onSubmit, selectedCount }) => {
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
+              {/* ✅ Loop สร้าง Option จาก STATUSES ทำให้สถานะใหม่ PENDING_RECHECK จะปรากฏอัตโนมัติ */}
               {Object.values(STATUSES).map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
@@ -69,4 +70,4 @@ const BulkEditModal = ({ show, onClose, onSubmit, selectedCount }) => {
   );
 };
 
-export default BulkEditModal;
+export default BulkEditModal; 

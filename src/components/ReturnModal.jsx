@@ -47,7 +47,8 @@ const ReturnModal = ({ show, onClose, onSubmit, data }) => {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">สภาพทรัพย์สิน</label>
             <div className="grid grid-cols-2 gap-3">
-              {['ปกติ', 'ชำรุด', 'สูญหาย', 'ส่งซ่อม'].map((status) => (
+              {/* ✅ เพิ่มปุ่ม 'รอตรวจสอบ' */}
+              {['ปกติ', 'ชำรุด', 'สูญหาย', 'ส่งซ่อม', 'รอตรวจสอบ'].map((status) => (
                 <button
                   key={status}
                   type="button"

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search, Truck } from 'lucide-react'; // เพิ่ม Truck icon
+import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search, Truck, HelpCircle, Info } from 'lucide-react'; // เพิ่ม Info icon
 import { CATEGORIES, COLORS, STATUSES } from '../config.jsx';
 
 const Dashboard = ({ assets }) => {
@@ -21,7 +21,8 @@ const Dashboard = ({ assets }) => {
     const broken = filteredAssets.filter(a => a.status === 'broken').length;
     const repair = filteredAssets.filter(a => a.status === 'repair').length;
     const lost = filteredAssets.filter(a => a.status === 'lost').length;
-    const pendingVendor = filteredAssets.filter(a => a.status === 'pending_vendor').length; // เพิ่มการนับ
+    const pendingVendor = filteredAssets.filter(a => a.status === 'pending_vendor').length; 
+    const pendingRecheck = filteredAssets.filter(a => a.status === 'pending_recheck').length;
 
     const centralAssigned = filteredAssets.filter(a => a.status === 'assigned' && a.isCentral).length;
     const personAssigned = filteredAssets.filter(a => a.status === 'assigned' && !a.isCentral).length;
@@ -32,7 +33,7 @@ const Dashboard = ({ assets }) => {
       percentage: total > 0 ? (filteredAssets.filter(a => a.category === cat.id).length / total) * 100 : 0
     })).sort((a, b) => b.count - a.count);
 
-    return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, pendingVendor, byCategory };
+    return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, pendingVendor, pendingRecheck, byCategory };
   }, [filteredAssets]);
 
   const getPieChartStyle = () => {
@@ -42,8 +43,9 @@ const Dashboard = ({ assets }) => {
     const pAssigned = pAvailable + (stats.assigned / stats.total) * 100;
     const pRepair = pAssigned + (stats.repair / stats.total) * 100;
     const pBroken = pRepair + (stats.broken / stats.total) * 100;
-    const pPendingVendor = pBroken + (stats.pendingVendor / stats.total) * 100; // เพิ่ม
-    const pLost = pPendingVendor + (stats.lost / stats.total) * 100;
+    const pPendingVendor = pBroken + (stats.pendingVendor / stats.total) * 100; 
+    const pPendingRecheck = pPendingVendor + (stats.pendingRecheck / stats.total) * 100; 
+    const pLost = pPendingRecheck + (stats.lost / stats.total) * 100;
     
     return {
       background: `conic-gradient(
@@ -52,7 +54,8 @@ const Dashboard = ({ assets }) => {
         ${COLORS.secondary} ${pAssigned}% ${pRepair}%, 
         ${COLORS.error} ${pRepair}% ${pBroken}%,
         #d8b4fe ${pBroken}% ${pPendingVendor}%, 
-        #94a3b8 ${pPendingVendor}% 100% 
+        #a855f7 ${pPendingVendor}% ${pPendingRecheck}%, 
+        #94a3b8 ${pPendingRecheck}% 100% 
       )`
     };
   };
@@ -69,7 +72,9 @@ const Dashboard = ({ assets }) => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">ภาพรวมระบบ (Dashboard)</h2>
-          <p className="text-slate-500 text-sm">ข้อมูลสถานะทรัพย์สินทั้งหมดในองค์กร</p>
+          <p className="text-slate-500 text-sm flex items-center gap-1">
+             ข้อมูลสถานะทรัพย์สินทั้งหมดในองค์กร <span className="bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded text-[10px] border border-slate-200">Real-time Data</span>
+          </p>
         </div>
         
         {/* Filter Bar */}
@@ -90,6 +95,7 @@ const Dashboard = ({ assets }) => {
                     value={filterCategory} 
                     onChange={(e) => setFilterCategory(e.target.value)}
                     className="text-sm border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1"
+                    title="กรองตามหมวดหมู่"
                 >
                     <option value="all">ทุกหมวดหมู่</option>
                     {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -101,6 +107,7 @@ const Dashboard = ({ assets }) => {
                     value={filterStatus} 
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="text-sm border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1"
+                    title="กรองตามสถานะ"
                 >
                     <option value="all">ทุกสถานะ</option>
                     {Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -121,10 +128,10 @@ const Dashboard = ({ assets }) => {
 
       {/* Cards สรุปยอด */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-        <StatCard title="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} icon={<CheckCircle size={24} />} color="bg-emerald-500" bgColor="bg-emerald-50" textColor="text-emerald-700" />
+        <StatCard title="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} icon={<CheckCircle size={24} />} color="bg-emerald-500" bgColor="bg-emerald-50" textColor="text-emerald-700" tooltip="อุปกรณ์ที่อยู่ในคลัง พร้อมสำหรับเบิกใช้งาน" />
         
         {/* แยก Card ใช้งานอยู่ ให้เห็นชัดเจนขึ้น */}
-        <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all`}>
+        <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all relative group`} title="อุปกรณ์ที่กำลังถูกใช้งานโดยพนักงานหรือเป็นเครื่องกลาง">
             <div className="flex justify-between items-start">
             <div>
                 <p className="text-sm text-slate-500 font-medium mb-1">ถูกใช้งานอยู่</p>
@@ -145,17 +152,28 @@ const Dashboard = ({ assets }) => {
             </div>
         </div>
 
-        <StatCard title="ส่งซ่อม" count={stats.repair} total={stats.total} icon={<Wrench size={24} />} color="bg-orange-500" bgColor="bg-orange-50" textColor="text-orange-700" />
-        <StatCard title="ชำรุด" count={stats.broken} total={stats.total} icon={<AlertTriangle size={24} />} color="bg-red-500" bgColor="bg-red-50" textColor="text-red-700" />
-        {/* ✅ เพิ่ม Card รอส่งคืน Vendor */}
-        <StatCard title="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} icon={<Truck size={24} />} color="bg-purple-500" bgColor="bg-purple-50" textColor="text-purple-700" />
-        <StatCard title="สูญหาย" count={stats.lost} total={stats.total} icon={<Search size={24} />} color="bg-slate-500" bgColor="bg-slate-100" textColor="text-slate-600" />
+        <StatCard title="ส่งซ่อม" count={stats.repair} total={stats.total} icon={<Wrench size={24} />} color="bg-orange-500" bgColor="bg-orange-50" textColor="text-orange-700" tooltip="อุปกรณ์ที่อยู่ระหว่างการซ่อมแซม" />
+        <StatCard title="ชำรุด" count={stats.broken} total={stats.total} icon={<AlertTriangle size={24} />} color="bg-red-500" bgColor="bg-red-50" textColor="text-red-700" tooltip="อุปกรณ์เสีย ไม่สามารถใช้งานได้" />
+        
+        <StatCard title="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} icon={<Truck size={24} />} color="bg-purple-500" bgColor="bg-purple-50" textColor="text-purple-700" tooltip="เครื่องเช่าที่หมดสัญญา รอส่งคืนบริษัทคู่ค้า" />
+        
+        <StatCard title="รอตรวจสอบ" count={stats.pendingRecheck} total={stats.total} icon={<HelpCircle size={24} />} color="bg-purple-600" bgColor="bg-purple-50" textColor="text-purple-700" tooltip="อุปกรณ์ที่ยังไม่ยืนยันสถานะ หรือรอการตรวจเช็คสภาพ" />
+        
+        <StatCard title="สูญหาย" count={stats.lost} total={stats.total} icon={<Search size={24} />} color="bg-slate-500" bgColor="bg-slate-100" textColor="text-slate-600" tooltip="อุปกรณ์ที่ตรวจสอบไม่พบ" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Pie Chart */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><PieIcon size={20} className="text-slate-400"/> สัดส่วนสถานะ</h3>
+          <div className="flex justify-between items-start mb-6">
+             <h3 className="font-bold text-slate-700 flex items-center gap-2"><PieIcon size={20} className="text-slate-400"/> สัดส่วนสถานะ</h3>
+             <div className="group relative">
+                <Info size={16} className="text-slate-400 cursor-help"/>
+                <div className="absolute right-0 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    แสดงสัดส่วนของอุปกรณ์ตามสถานะต่างๆ เทียบกับจำนวนทั้งหมด
+                </div>
+             </div>
+          </div>
           
           {stats.total > 0 ? (
             <div className="flex flex-col items-center">
@@ -170,7 +188,8 @@ const Dashboard = ({ assets }) => {
                 <LegendItem color={COLORS.primary} label="ใช้งานอยู่" count={stats.assigned} total={stats.total} />
                 <LegendItem color={COLORS.secondary} label="ส่งซ่อม" count={stats.repair} total={stats.total} />
                 <LegendItem color={COLORS.error} label="ชำรุด" count={stats.broken} total={stats.total} />
-                <LegendItem color="#d8b4fe" label="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} /> {/* เพิ่ม Legend */}
+                <LegendItem color="#d8b4fe" label="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} /> 
+                <LegendItem color="#a855f7" label="รอตรวจสอบ" count={stats.pendingRecheck} total={stats.total} /> 
                 <LegendItem color="#94a3b8" label="สูญหาย" count={stats.lost} total={stats.total} />
                 </div>
             </div>
@@ -184,7 +203,10 @@ const Dashboard = ({ assets }) => {
 
         {/* Bar Chart */}
         <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> แยกตามหมวดหมู่</h3>
+          <div className="flex justify-between items-start mb-6">
+             <h3 className="font-bold text-slate-700 flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> แยกตามหมวดหมู่</h3>
+             <div className="text-xs text-slate-400">เรียงตามจำนวนจากมากไปน้อย</div>
+          </div>
           
           {stats.total > 0 ? (
             <>
@@ -198,7 +220,7 @@ const Dashboard = ({ assets }) => {
                         </div>
                         <div className="text-sm text-slate-500"><span className="font-bold text-slate-800">{cat.count}</span> รายการ</div>
                         </div>
-                        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden" title={`${cat.count} รายการ (${cat.percentage.toFixed(1)}%)`}>
                         <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${cat.percentage}%`, backgroundColor: COLORS.primary, minWidth: cat.count > 0 ? '4px' : '0' }}></div>
                         </div>
                     </div>
@@ -223,13 +245,23 @@ const Dashboard = ({ assets }) => {
   );
 };
 
-const StatCard = ({ title, count, total, icon, color, bgColor, textColor }) => (
-  <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all`}>
+// ✅ ปรับ StatCard ให้รองรับ Tooltip
+const StatCard = ({ title, count, total, icon, color, bgColor, textColor, tooltip }) => (
+  <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all relative group`} title={tooltip}>
     <div className="flex justify-between items-start">
       <div><p className="text-sm text-slate-500 font-medium mb-1">{title}</p><h4 className="text-2xl font-bold text-slate-800">{count}</h4></div>
       <div className={`p-2.5 rounded-lg ${bgColor} ${textColor}`}>{icon}</div>
     </div>
     <div className="mt-3 w-full bg-slate-100 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${color}`} style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }}></div></div>
+    
+    {/* Optional: Custom Tooltip popup (ถ้าไม่ใช้ native title attribute) */}
+    {/* {tooltip && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 text-center">
+            {tooltip}
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+        </div>
+    )} 
+    */}
   </div>
 );
 

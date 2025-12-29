@@ -4,11 +4,11 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimest
 // นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 // ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning, Menu, ChevronLeft } from 'lucide-react';
+import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning, Menu, ChevronLeft, Smartphone, Info } from 'lucide-react'; // เพิ่ม Info icon
 
 // นำเข้า Config และ Components
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
-import { parseCSV, parseLaptopCSV, generateHandoverHtml, exportToCSV } from './utils/helpers.js';
+import { parseCSV, parseLaptopCSV, parseMobileCSV, generateHandoverHtml, exportToCSV } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import AssignModal from './components/AssignModal.jsx';
@@ -32,7 +32,6 @@ export default function App() {
   const [loading, setLoading] = useState(true); 
   const [view, setView] = useState('dashboard'); 
   
-  // ✅ ตั้งค่าเริ่มต้น Sidebar: จอใหญ่เปิด, จอเล็กปิด
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   
   const [searchTerm, setSearchTerm] = useState(''); 
@@ -48,8 +47,12 @@ export default function App() {
   // สถานะอื่นๆ
   const [sheetUrl, setSheetUrl] = useState('');
   const [laptopSheetUrl, setLaptopSheetUrl] = useState('');
+  const [mobileSheetUrl, setMobileSheetUrl] = useState(''); 
   const [exportUrl, setExportUrl] = useState('');
+  const [mobileExportUrl, setMobileExportUrl] = useState(''); 
+
   const [isSyncingLaptops, setIsSyncingLaptops] = useState(false);
+  const [isSyncingMobiles, setIsSyncingMobiles] = useState(false); 
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
 
   const [employees, setEmployees] = useState([]);
@@ -63,14 +66,13 @@ export default function App() {
   // สถานะสำหรับ Modals ต่างๆ
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
-  const [newAsset, setNewAsset] = useState({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false });
+  const [newAsset, setNewAsset] = useState({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false, phoneNumber: '' });
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
   const [showDeletedLog, setShowDeletedLog] = useState(false); 
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
-  // 🛡️ Security: Helper function to sanitize input strings
   const sanitizeInput = (input) => {
     if (typeof input !== 'string') return input;
     let safe = input.trim();
@@ -80,7 +82,6 @@ export default function App() {
     return safe.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   };
 
-  // --- Effects (Auth & Firestore Listener) ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -119,11 +120,25 @@ export default function App() {
     const savedLaptopUrl = localStorage.getItem('it_asset_laptop_sheet_url');
     if (savedLaptopUrl) { setLaptopSheetUrl(savedLaptopUrl); }
 
+    const savedMobileUrl = localStorage.getItem('it_asset_mobile_sheet_url'); 
+    if (savedMobileUrl) { setMobileSheetUrl(savedMobileUrl); }
+
     const savedExportUrl = localStorage.getItem('it_asset_export_url');
     if (savedExportUrl) setExportUrl(savedExportUrl);
+    
+    const savedMobileExportUrl = localStorage.getItem('it_asset_mobile_export_url');
+    if (savedMobileExportUrl) setMobileExportUrl(savedMobileExportUrl);
+
+    const handleResize = () => {
+        if (window.innerWidth < 1024) setIsSidebarOpen(false);
+        else setIsSidebarOpen(true);
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
 
     return () => {
         unsubscribe();
+        window.removeEventListener('resize', handleResize);
     };
   }, []);
 
@@ -160,16 +175,17 @@ export default function App() {
     setSelectedIds(new Set());
   }, [view, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
 
-  // --- Handlers ---
   const handleSaveSettings = () => { 
       if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่แก้ไขตั้งค่าได้', 'error'); return; }
-      if (sheetUrl && !sheetUrl.startsWith('https://docs.google.com/')) {
-          showNotification('ลิงก์ Google Sheet ไม่ถูกต้อง', 'error');
-          return;
-      }
+      
+      const isValid = (url) => !url || url.startsWith('https://docs.google.com/') || url.startsWith('https://script.google.com/');
+      if (!isValid(sheetUrl)) { showNotification('ลิงก์ Google Sheet ไม่ถูกต้อง', 'error'); return; }
+
       localStorage.setItem('it_asset_sheet_url', sheetUrl); 
       localStorage.setItem('it_asset_laptop_sheet_url', laptopSheetUrl); 
+      localStorage.setItem('it_asset_mobile_sheet_url', mobileSheetUrl); 
       localStorage.setItem('it_asset_export_url', exportUrl);
+      localStorage.setItem('it_asset_mobile_export_url', mobileExportUrl); 
       showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว'); 
       fetchEmployeesFromSheet(sheetUrl);
   };
@@ -191,7 +207,7 @@ export default function App() {
   };
 
   const handleSyncLaptops = async () => {
-    if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่ Sync ข้อมูลได้', 'error'); return; }
+    if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้น', 'error'); return; }
     if (!laptopSheetUrl) return;
     
     setIsSyncingLaptops(true);
@@ -200,86 +216,8 @@ export default function App() {
         if (!res.ok) throw new Error("Fetch failed");
         const text = await res.text();
         const laptopData = parseLaptopCSV(text);
-        
-        const batch = writeBatch(db);
-        const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
-        
-        let addedCount = 0;
-        let updatedCount = 0;
-        let operationCount = 0;
-        const BATCH_LIMIT = 500; 
-        
-        for (const item of laptopData) {
-            const finalStatus = item.status; 
-            let assigneeInfo = {
-                assignedTo: null,
-                department: null,
-                position: null,
-                assignedDate: null
-            };
-
-            if (item.employeeId) {
-                const emp = employees.find(e => e.id.toLowerCase() === item.employeeId.toLowerCase());
-                if (emp) {
-                    assigneeInfo = {
-                        assignedTo: `${emp.name} (${emp.nickname})`,
-                        employeeId: emp.id, 
-                        department: emp.department,
-                        position: emp.position,
-                        assignedDate: new Date().toISOString()
-                    };
-                } else {
-                    assigneeInfo = {
-                        assignedTo: `Unknown (ID: ${item.employeeId})`,
-                        employeeId: item.employeeId,
-                        assignedDate: new Date().toISOString()
-                    };
-                }
-            } else if (item.isCentral && item.location) { 
-                assigneeInfo = {
-                    assignedTo: `Central - ${item.location}`,
-                    employeeId: null,
-                    department: null,
-                    position: null,
-                    assignedDate: new Date().toISOString()
-                };
-            }
-
-            const dataToSave = {
-                ...item,
-                ...assigneeInfo,
-                status: finalStatus, 
-                isCentral: item.isCentral || false, 
-                location: item.location || ''       
-            };
-
-            if (existingAssetsMap.has(item.serialNumber)) {
-                const existingAsset = existingAssetsMap.get(item.serialNumber);
-                const docRef = doc(db, COLLECTION_NAME, existingAsset.id);
-                batch.update(docRef, dataToSave);
-                updatedCount++;
-            } else {
-                const docRef = doc(collection(db, COLLECTION_NAME));
-                batch.set(docRef, {
-                    ...dataToSave,
-                    createdAt: serverTimestamp()
-                });
-                addedCount++;
-            }
-            operationCount++;
-
-            if (operationCount >= BATCH_LIMIT) {
-                await batch.commit();
-                operationCount = 0;
-            }
-        }
-        
-        if (operationCount > 0) {
-            await batch.commit();
-        }
-        
-        showNotification(`Sync เสร็จสิ้น: เพิ่ม ${addedCount}, อัปเดต ${updatedCount} รายการ`);
-        
+        await performBatchSync(laptopData);
+        showNotification(`Sync Laptop เสร็จสิ้น`);
     } catch (error) {
         console.error("Sync Laptop Error:", error);
         showNotification('เกิดข้อผิดพลาดในการ Sync Laptop', 'error');
@@ -288,9 +226,114 @@ export default function App() {
     }
   };
 
+  const handleSyncMobiles = async () => {
+    if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้น', 'error'); return; }
+    if (!mobileSheetUrl) return;
+    
+    setIsSyncingMobiles(true);
+    try {
+        const res = await fetch(mobileSheetUrl);
+        if (!res.ok) throw new Error("Fetch failed");
+        const text = await res.text();
+        const mobileData = parseMobileCSV(text);
+        await performBatchSync(mobileData);
+        showNotification(`Sync Mobile เสร็จสิ้น`);
+    } catch (error) {
+        console.error("Sync Mobile Error:", error);
+        showNotification('เกิดข้อผิดพลาดในการ Sync Mobile', 'error');
+    } finally {
+        setIsSyncingMobiles(false);
+    }
+  };
+
+  const performBatchSync = async (dataList) => {
+    const batch = writeBatch(db);
+    const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
+    let operationCount = 0;
+    const BATCH_LIMIT = 450; 
+    
+    for (const item of dataList) {
+        let assigneeInfo = { assignedTo: null, department: null, position: null, assignedDate: null };
+
+        if (item.employeeId) {
+            const emp = employees.find(e => e.id.toLowerCase() === item.employeeId.toLowerCase());
+            if (emp) {
+                assigneeInfo = {
+                    assignedTo: `${emp.name} (${emp.nickname})`,
+                    employeeId: emp.id, 
+                    department: emp.department,
+                    position: emp.position,
+                    assignedDate: new Date().toISOString()
+                };
+            } else {
+                assigneeInfo = {
+                    assignedTo: `Unknown (ID: ${item.employeeId})`,
+                    employeeId: item.employeeId,
+                    assignedDate: new Date().toISOString()
+                };
+            }
+        } else if (item.isCentral && item.location) { 
+            assigneeInfo = {
+                assignedTo: `Central - ${item.location}`,
+                employeeId: null,
+                department: null,
+                position: null,
+                assignedDate: new Date().toISOString()
+            };
+        }
+
+        const dataToSave = {
+            ...item,
+            ...assigneeInfo,
+            isCentral: item.isCentral || false, 
+            location: item.location || '',
+            phoneNumber: item.phoneNumber || ''
+        };
+
+        if (existingAssetsMap.has(item.serialNumber)) {
+            const existingAsset = existingAssetsMap.get(item.serialNumber);
+            const docRef = doc(db, COLLECTION_NAME, existingAsset.id);
+            batch.update(docRef, dataToSave);
+        } else {
+            const docRef = doc(collection(db, COLLECTION_NAME));
+            batch.set(docRef, {
+                ...dataToSave,
+                createdAt: serverTimestamp()
+            });
+        }
+        operationCount++;
+
+        if (operationCount >= BATCH_LIMIT) {
+            await batch.commit();
+            operationCount = 0;
+        }
+    }
+    
+    if (operationCount > 0) {
+        await batch.commit();
+    }
+  };
+
   const handleSyncToSheet = async () => {
-    if (!exportUrl) {
-        showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
+    let targetUrl = '';
+    let categoryToSync = '';
+    let typeLabel = '';
+
+    if (view === 'mobile') {
+        targetUrl = mobileExportUrl;
+        categoryToSync = 'mobile';
+        typeLabel = 'Mobile';
+    } else if (view === 'laptop' || view === 'dashboard' || view === 'list') {
+        targetUrl = exportUrl;
+        categoryToSync = 'laptop'; 
+        typeLabel = 'Laptop';
+    } else {
+        showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error');
+        return;
+    }
+
+    if (!targetUrl) {
+        showNotification(`กรุณาตั้งค่า URL สำหรับ ${typeLabel} ในหน้าตั้งค่าก่อน`, 'error');
         setShowSettings(true);
         return;
     }
@@ -298,8 +341,10 @@ export default function App() {
     setIsSyncingSheet(true);
     
     try {
+        const assetsToSync = assets.filter(a => a.category === categoryToSync);
+
         const payload = {
-            assets: assets.map(a => ({
+            assets: assetsToSync.map(a => ({
                 id: a.id,
                 name: a.name || '',
                 brand: a.brand || '',
@@ -313,21 +358,22 @@ export default function App() {
                 isRental: !!a.isRental,
                 isCentral: !!a.isCentral,
                 location: a.location || '',
-                notes: a.notes || ''
+                notes: a.notes || '',
+                phoneNumber: a.phoneNumber || '' 
             }))
         };
 
-        const cleanUrl = exportUrl.trim();
-        const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        const cleanUrl = targetUrl.trim();
+        const finalUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
         
-        await fetch(targetUrl, {
+        await fetch(finalUrl, {
             method: 'POST',
             mode: 'no-cors', 
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
         
-        showNotification('ส่งคำขออัปเดตข้อมูลไปยัง Sheet เรียบร้อยแล้ว');
+        showNotification(`ส่งข้อมูล ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
     } catch (error) {
         console.error("Sync Error:", error);
         showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล', 'error');
@@ -369,6 +415,7 @@ export default function App() {
           brand: sanitizeInput(newAsset.brand || ''),
           serialNumber: sanitizeInput(newAsset.serialNumber),
           notes: sanitizeInput(newAsset.notes || ''),
+          phoneNumber: sanitizeInput(newAsset.phoneNumber || ''),
           status: 'available', 
           assignedTo: null, 
           assignedDate: null, 
@@ -379,7 +426,7 @@ export default function App() {
 
       const docRef = await addDoc(collection(db, COLLECTION_NAME), safeData); 
       await logActivity('CREATE', { id: docRef.id, ...safeData }, 'เพิ่มทรัพย์สินเข้าระบบ'); 
-      setNewAsset({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false }); 
+      setNewAsset({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false, phoneNumber: '' }); 
       setView(safeData.category); 
       showNotification('เพิ่มสำเร็จ'); 
     } catch { showNotification('Failed', 'error'); } 
@@ -463,7 +510,9 @@ export default function App() {
               brand: sanitizeInput(editModal.asset.brand),
               serialNumber: sanitizeInput(editModal.asset.serialNumber),
               notes: sanitizeInput(editModal.asset.notes),
-              location: sanitizeInput(editModal.asset.location || '')
+              location: sanitizeInput(editModal.asset.location || ''),
+              phoneNumber: sanitizeInput(editModal.asset.phoneNumber || ''),
+              status: editModal.asset.status 
           }; 
           
           if (updateData.status !== 'assigned') { 
@@ -491,7 +540,8 @@ export default function App() {
       else if (conditionStatus === 'สูญหาย') { newStatus = 'lost'; } 
       else if (conditionStatus === 'ส่งซ่อม') { newStatus = 'repair'; } 
       else if (conditionStatus === 'รอส่งคืน Vendor') { newStatus = 'pending_vendor'; } 
-      
+      else if (conditionStatus === 'รอตรวจสอบ') { newStatus = 'pending_recheck'; }
+
       try { 
           const safeCondition = sanitizeInput(fullConditionString);
 
@@ -567,7 +617,6 @@ export default function App() {
   const handlePrintHandover = (asset) => { const printWindow = window.open('', '', 'width=900,height=800'); printWindow.document.write(generateHandoverHtml(asset)); printWindow.document.close(); setTimeout(() => printWindow.print(), 1000); };
   const openAssignModal = (asset) => { setAssignModal({ open: true, assetId: asset.id, assetName: asset.name, empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' }); setOpenDropdownId(null); };
 
-  // ✅ ฟังก์ชันสำหรับการเลือกและจัดการหมู่
   const handleSelectAll = (filteredItems) => {
     if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
       setSelectedIds(new Set());
@@ -594,7 +643,6 @@ export default function App() {
       Array.from(selectedIds).forEach((id) => {
         const docRef = doc(db, COLLECTION_NAME, id);
         batch.update(docRef, { [field]: value });
-        
         const logRef = doc(collection(db, LOGS_COLLECTION_NAME));
         const asset = assets.find(a => a.id === id);
         if (asset) {
@@ -757,7 +805,11 @@ export default function App() {
         <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1 min-w-[256px]">
             <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Main Menu</p>
             
-            <button onClick={() => { setView('dashboard'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'dashboard' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}>
+            <button 
+                onClick={() => { setView('dashboard'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} 
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'dashboard' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}
+                title="หน้าภาพรวมสถานะทรัพย์สินทั้งหมด"
+            >
                 <LayoutDashboard size={18} /> ภาพรวม (Dashboard)
             </button>
 
@@ -768,6 +820,7 @@ export default function App() {
                         key={cat.id}
                         onClick={() => { setView(cat.id); if(window.innerWidth<1024) setIsSidebarOpen(false); }} 
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === cat.id ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}
+                        title={`ดูรายการทรัพย์สินประเภท ${cat.name}`}
                     >
                         {cat.icon} {cat.name}
                     </button>
@@ -777,10 +830,18 @@ export default function App() {
             {isAdmin && (
                 <div className="pt-4 pb-2">
                     <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Admin Tools</p>
-                    <button onClick={() => { setView('add'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'add' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <button 
+                        onClick={() => { setView('add'); if(window.innerWidth<1024) setIsSidebarOpen(false); }} 
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${view === 'add' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}
+                        title="เพิ่มทรัพย์สินใหม่เข้าระบบทีละรายการ"
+                    >
                         <Plus size={18} /> เพิ่มรายการใหม่
                     </button>
-                    <button onClick={() => setShowDeletedLog(true)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    <button 
+                        onClick={() => setShowDeletedLog(true)} 
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                        title="ดูประวัติการลบทรัพย์สินย้อนหลัง"
+                    >
                         <Trash2 size={18} /> ประวัติการลบ
                     </button>
                 </div>
@@ -831,10 +892,10 @@ export default function App() {
                         <button 
                             onClick={() => exportToCSV(filteredAssets)}
                             className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 text-sm font-medium transition-all"
-                            title="Export CSV"
+                            title="ดาวน์โหลดรายการที่แสดงอยู่เป็นไฟล์ CSV"
                         >
                             <FileSpreadsheet size={18} className="text-green-600" /> 
-                            <span className="hidden lg:inline">CSV</span>
+                            <span className="hidden lg:inline">Export CSV</span>
                         </button>
                         
                         {isAdmin && (
@@ -842,7 +903,7 @@ export default function App() {
                                 onClick={handleSyncToSheet}
                                 disabled={isSyncingSheet}
                                 className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 text-sm font-medium transition-all"
-                                title="Update to Google Sheet"
+                                title="ส่งข้อมูลล่าสุดกลับไปยัง Google Sheet (ต้องตั้งค่า URL ก่อน)"
                             >
                                 <CloudLightning size={18} className={`text-orange-500 ${isSyncingSheet ? "animate-pulse" : ""}`} /> 
                                 <span className="hidden lg:inline">{isSyncingSheet ? 'Syncing...' : 'Update Sheet'}</span>
@@ -851,7 +912,11 @@ export default function App() {
                     </>
                 )}
                 
-                <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Settings">
+                <button 
+                    onClick={() => setShowSettings(true)} 
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" 
+                    title="ตั้งค่าการเชื่อมต่อ (Settings)"
+                >
                     <Settings size={20} />
                 </button>
             </div>
@@ -876,16 +941,16 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto max-w-full">
                         <div className="flex items-center gap-2 px-2 text-slate-400 shrink-0"><Filter size={16} /><span className="text-xs font-medium uppercase hidden sm:inline">Filter</span></div>
                         <div className="h-4 w-px bg-slate-300"></div>
-                        <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ยี่ห้อ"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
+                        <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="กรองตามยี่ห้อ"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
                         <div className="h-4 w-px bg-slate-300"></div>
-                        <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="แผนก"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                        <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="กรองตามแผนก"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
                         <div className="h-4 w-px bg-slate-300"></div>
-                        <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ตำแหน่ง"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                        <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="กรองตามตำแหน่ง"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
                         <div className="h-4 w-px bg-slate-300"></div>
-                        <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="ประเภทเครื่อง"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
+                        <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="กรองตามประเภทการเช่า"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
                         <div className="h-4 w-px bg-slate-300"></div>
-                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="สถานะ"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
-                        {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors" title="ล้างตัวกรอง"><X size={14} /></button>)}
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate" title="กรองตามสถานะ"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+                        {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors" title="ล้างตัวกรองทั้งหมด"><X size={14} /></button>)}
                     </div>
                 </div>
 
@@ -897,11 +962,11 @@ export default function App() {
                     <span>เลือกอยู่ <span className="font-bold text-lg mx-1">{selectedIds.size}</span> รายการ</span>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center">
-                    <button onClick={() => setBulkEditModal({ open: true })} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 transition-all shadow-sm"><Pencil size={14}/> เปลี่ยนสถานะ</button>
+                    <button onClick={() => setBulkEditModal({ open: true })} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 transition-all shadow-sm" title="เปลี่ยนสถานะทีละหลายรายการ"><Pencil size={14}/> เปลี่ยนสถานะ</button>
                     <button onClick={() => handleBulkEdit('isRental', true, 'ตั้งเป็นเครื่องเช่า (Rental)')} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-sm hover:bg-purple-50 transition-all shadow-sm"><Tag size={14}/> ตั้งเป็นเครื่องเช่า</button>
                     <button onClick={() => handleBulkEdit('isRental', false, 'ตั้งเป็นเครื่องบริษัท (Owned)')} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50 transition-all shadow-sm"><Box size={14}/> ตั้งเป็นเครื่องบริษัท</button>
                     <div className="h-6 w-px bg-blue-200 mx-1 hidden sm:block"></div>
-                    <button onClick={handleBulkDelete} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-all shadow-sm"><Trash2 size={14}/> ลบรายการ</button>
+                    <button onClick={handleBulkDelete} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-all shadow-sm" title="ลบรายการที่เลือกทั้งหมด"><Trash2 size={14}/> ลบรายการ</button>
                     </div>
                 </div>
                 )}
@@ -914,7 +979,7 @@ export default function App() {
                         <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold sticky top-0 z-10">
                         <tr>
                             <th className="px-4 py-4 w-10 text-center">
-                            <button onClick={() => handleSelectAll(filteredAssets)} className="text-slate-400 hover:text-slate-600 focus:outline-none" disabled={!isAdmin}>
+                            <button onClick={() => handleSelectAll(filteredAssets)} className="text-slate-400 hover:text-slate-600 focus:outline-none" disabled={!isAdmin} title="เลือกทั้งหมด">
                                 {filteredAssets.length > 0 && selectedIds.size === filteredAssets.length ? <CheckSquare size={18} className={isAdmin ? "text-blue-600" : "text-slate-300"} /> : <Square size={18} className={!isAdmin ? "cursor-not-allowed text-slate-200" : ""} />}
                             </button>
                             </th>
@@ -944,7 +1009,14 @@ export default function App() {
                                     {asset.isCentral && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-0.5"><Building2 size={10}/> กลาง</span>}
                                     {asset.isRental && <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 font-bold flex gap-1"><Tag size={10}/> เช่า</span>}
                                     </div>
-                                    <div className="text-xs text-slate-500 font-mono">{asset.serialNumber}</div>
+                                    <div className="text-xs text-slate-500 font-mono flex items-center gap-2">
+                                        {asset.serialNumber}
+                                        {asset.phoneNumber && (
+                                            <span className="flex items-center gap-1 bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-100">
+                                                <Smartphone size={10}/> {asset.phoneNumber}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 </div>
                             </td>
@@ -960,7 +1032,7 @@ export default function App() {
                             <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                             
                             <td className="px-4 py-4 text-right relative">
-                                <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}}> <MoreVertical size={20} /> </button>
+                                <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors" style={{':hover': { color: COLORS.primary }}} title="เมนูจัดการ"> <MoreVertical size={20} /> </button>
                                 {openDropdownId === asset.id && (
                                     <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-slate-200 overflow-hidden" style={{ marginRight: '1.5rem', marginTop: '-10px' }}>
                                         <div className="py-1">
@@ -979,7 +1051,7 @@ export default function App() {
                                                             {asset.status === 'assigned' && ( <> <button onClick={() => onChangeOwnerClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <ArrowLeftRight size={16} style={{color: COLORS.primary}}/> เปลี่ยนผู้ถือครอง </button> <button onClick={() => { handlePrintHandover(asset); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Printer size={16} className="text-purple-600"/> พิมพ์ใบส่งมอบ </button> <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> </> )}
                                                         </>
                                                     )}
-                                                    {(['broken','repair','lost','pending_vendor'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
+                                                    {(['broken','repair','lost','pending_vendor', 'pending_recheck'].includes(asset.status)) && !asset.isCentral && ( <button onClick={() => onReturnClick(asset)} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <RotateCcw size={16} style={{color: COLORS.secondary}}/> รับคืนอุปกรณ์ </button> )}
                                                     <button onClick={() => { setEditModal({ open: true, asset: { ...asset } }); setOpenDropdownId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"> <Pencil size={16} className="text-slate-500"/> แก้ไขข้อมูล </button>
                                                     <div className="border-t border-slate-100 my-1"></div>
                                                     <button onClick={() => onDeleteClick(asset)} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"> <Trash2 size={16}/> ลบรายการ </button>
@@ -1006,29 +1078,15 @@ export default function App() {
             {view === 'add' && isAdmin && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
-                <form onSubmit={handleAddAsset} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-slate-700">ชื่อทรัพย์สิน</label>
-                        <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="เช่น MacBook Pro 14" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-slate-700">ยี่ห้อ (Brand)</label>
-                        <input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="เช่น Apple, Dell, Lenovo" />
-                    </div>
+                <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
+                    <Info size={16} className="text-blue-600 mt-0.5 shrink-0" />
+                    <p className="text-xs text-blue-700">กรุณาเลือก <b>หมวดหมู่</b> ให้ถูกต้องก่อนกรอกข้อมูล เพื่อให้ระบบแสดงช่องกรอกข้อมูลที่เหมาะสม (เช่น Mobile จะมีช่องใส่เบอร์โทรศัพท์)</p>
                 </div>
                 
-                <div>
-                    <label className="block text-sm font-medium mb-1 text-slate-700">Serial Number</label>
-                    <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
-                </div>
-
-                <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <input type="checkbox" id="isRental" className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> 
-                    <label htmlFor="isRental" className="text-sm cursor-pointer select-none text-slate-700 font-medium">เป็นเครื่องเช่า (Rental)</label>
-                </div>
-
-                <div>
+                <form onSubmit={handleAddAsset} className="space-y-4">
+                
+                {/* 🟢 CATEGORY SELECTION */}
+                <div className="mb-6">
                     <label className="block text-sm font-medium mb-2 text-slate-700">หมวดหมู่</label>
                     <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                         {CATEGORIES.map(c => (
@@ -1044,6 +1102,52 @@ export default function App() {
                         ))}
                     </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">
+                           {/* เปลี่ยน Label ตามหมวดหมู่ */}
+                           {newAsset.category === 'mobile' ? 'รุ่น (Model)' : 'ชื่อทรัพย์สิน'}
+                        </label>
+                        <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder={newAsset.category === 'mobile' ? "เช่น iPhone 15" : "เช่น MacBook Pro 14"} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">ยี่ห้อ (Brand)</label>
+                        <input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder={newAsset.category === 'mobile' ? "เช่น Apple, Samsung" : "เช่น Apple, Dell"} />
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">
+                            {newAsset.category === 'mobile' ? 'IMEI / Serial Number' : 'Serial Number'}
+                        </label>
+                        <input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" style={{focusBorderColor: COLORS.primary}} value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="ระบุเลข Serial Number" />
+                    </div>
+
+                    {/* ✅ แสดงช่องเบอร์โทรศัพท์ถ้าเป็น Mobile */}
+                    {newAsset.category === 'mobile' && (
+                        <div className="animate-fade-in">
+                            <label className="block text-sm font-medium mb-1 text-slate-700 flex items-center gap-1">
+                                <Smartphone size={14}/> เบอร์โทรศัพท์ (Phone No)
+                            </label>
+                            <input 
+                                type="text" 
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" 
+                                style={{focusBorderColor: COLORS.primary}} 
+                                value={newAsset.phoneNumber} 
+                                onChange={e => setNewAsset({...newAsset, phoneNumber: e.target.value})} 
+                                placeholder="0XX-XXX-XXXX" 
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <input type="checkbox" id="isRental" className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> 
+                    <label htmlFor="isRental" className="text-sm cursor-pointer select-none text-slate-700 font-medium">เป็นเครื่องเช่า (Rental)</label>
+                </div>
+
                 <button type="submit" className="w-full text-white py-2.5 rounded-xl hover:opacity-90 transition-all shadow-md font-medium mt-4" style={{backgroundColor: COLORS.primary}}>บันทึกข้อมูล</button>
                 </form>
             </div>
@@ -1059,12 +1163,18 @@ export default function App() {
          setSheetUrl={setSheetUrl} 
          laptopSheetUrl={laptopSheetUrl}
          setLaptopSheetUrl={setLaptopSheetUrl}
+         mobileSheetUrl={mobileSheetUrl} 
+         setMobileSheetUrl={setMobileSheetUrl} 
          exportUrl={exportUrl}
          setExportUrl={setExportUrl}
+         mobileExportUrl={mobileExportUrl} 
+         setMobileExportUrl={setMobileExportUrl} 
          onSave={handleSaveSettings} 
          onSyncLaptops={handleSyncLaptops}
          isSyncing={isSyncing}
          isSyncingLaptops={isSyncingLaptops}
+         onSyncMobiles={handleSyncMobiles} 
+         isSyncingMobiles={isSyncingMobiles} 
       />
       <AssignModal show={assignModal.open} onClose={() => setAssignModal({ ...assignModal, open: false })} onSubmit={handleAssignSubmit} data={assignModal} setData={setAssignModal} onLookup={lookupEmployee} empStatus={assignModal.empStatus} />
       <EditModal show={editModal.open} onClose={() => setEditModal({ open: false, asset: null })} onSubmit={handleEditSubmit} data={editModal.asset} setData={(val) => setEditModal({ ...editModal, asset: val })} />

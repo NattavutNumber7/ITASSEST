@@ -64,5 +64,7 @@ export const STATUSES = {
   BROKEN: { id: 'broken', label: 'ชำรุด', color: 'bg-red-50 text-red-700 border-red-200' },
   REPAIR: { id: 'repair', label: 'ส่งซ่อม', color: 'bg-[#ff6600]/10 text-[#ff6600] border-[#ff6600]/30' },
   PENDING_VENDOR: { id: 'pending_vendor', label: 'รอส่งคืน Vendor', color: 'bg-purple-100 text-purple-700 border-purple-300' },
+  // ✅ เพิ่มสถานะใหม่ PENDING_RECHECK
+  PENDING_RECHECK: { id: 'pending_recheck', label: 'รอตรวจสอบ', color: 'bg-purple-50 text-purple-600 border-purple-200' },
   LOST: { id: 'lost', label: 'สูญหาย', color: 'bg-slate-100 text-slate-500 border-slate-300' },
 };

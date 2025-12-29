@@ -13,7 +13,6 @@ const formatEmployeeId = (id) => {
 };
 
 // 🔒 SECURITY FIX: ฟังก์ชันสำหรับ Escape HTML เพื่อป้องกัน XSS Attack
-// ป้องกันกรณีที่มีคนตั้งชื่อพนักงานหรือทรัพย์สินด้วย Script เช่น <script>alert('hacked')</script>
 const escapeHtml = (unsafe) => {
   if (!unsafe) return "";
   return unsafe
@@ -30,7 +29,6 @@ export const parseCSV = (text) => {
   if (lines.length < 2) return [];
   
   return lines.slice(1).map(line => {
-    // Regex นี้อาจจะยังไม่ cover ทุกกรณีของ CSV แต่เพียงพอสำหรับ Google Sheets export
     const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
     const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
 
@@ -48,7 +46,7 @@ export const parseCSV = (text) => {
   }).filter(item => item !== null);
 };
 
-// ✅ ฟังก์ชันสำหรับดึงข้อมูล Laptop (ปรับปรุง Logic สถานะให้แม่นยำขึ้น)
+// ✅ ฟังก์ชันสำหรับดึงข้อมูล Laptop
 export const parseLaptopCSV = (text) => {
   if (!text) return [];
   const lines = text.split('\n').filter(l => l.trim());
@@ -61,10 +59,10 @@ export const parseLaptopCSV = (text) => {
     if (cols.length < 4) return null; 
 
     const brand = cleanCol(cols[0]);
-    const name = cleanCol(cols[1]);
+    const name = cleanCol(cols[1]); // Model Name
     const serialNumber = cleanCol(cols[2]);
     const employeeId = formatEmployeeId(cleanCol(cols[3]));
-    const location = cleanCol(cols[4]); // อ่าน Column E (ชื่อคลัง/สถานที่)
+    const location = cleanCol(cols[4]); 
     
     let rawStatus = cols.length > 9 ? cleanCol(cols[9]) : ''; 
     const s = rawStatus.toLowerCase().trim();
@@ -72,25 +70,17 @@ export const parseLaptopCSV = (text) => {
     let status = 'available'; 
     let isCentral = false;
 
-    // ✅ Logic ใหม่: เรียงลำดับความสำคัญให้ถูกต้อง
-    if (s.includes('lost')) {
-        status = 'lost';
-    } else if (s.includes('damaged') || s.includes('broken') || s.includes('write-off')) {
-        status = 'broken';
-    } else if (s.includes('pending') || s.includes('repair')) {
-        status = 'repair';
-    } else {
-        if (employeeId) {
-            status = 'assigned';
-        } else if (location) {
-            status = 'assigned';
-            isCentral = true;
-        } else {
-            if (s.includes('active') && !s.includes('stock')) {
-                 status = 'assigned';
-            } else {
-                 status = 'available';
-            }
+    // เพิ่มการดักจับ Pending Recheck ตรงนี้ด้วยเผื่อ Laptop ใช้เหมือนกัน
+    if (s.includes('lost')) { status = 'lost'; } 
+    else if (s.includes('damaged') || s.includes('broken') || s.includes('write-off')) { status = 'broken'; } 
+    else if (s.includes('pending') && s.includes('recheck')) { status = 'pending_recheck'; } // ✅ เพิ่มสำหรับ Laptop
+    else if (s.includes('pending') || s.includes('repair')) { status = 'repair'; } 
+    else {
+        if (employeeId) { status = 'assigned'; } 
+        else if (location) { status = 'assigned'; isCentral = true; } 
+        else {
+            if (s.includes('active') && !s.includes('stock')) { status = 'assigned'; } 
+            else { status = 'available'; }
         }
     }
 
@@ -108,6 +98,83 @@ export const parseLaptopCSV = (text) => {
   }).filter(item => item !== null);
 };
 
+// ✅ ฟังก์ชันใหม่: สำหรับดึงข้อมูล Mobile
+export const parseMobileCSV = (text) => {
+  if (!text) return [];
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return [];
+
+  return lines.slice(1).map((line, index) => {
+    const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+    const cleanCol = (col) => col ? col.replace(/^"|"$/g, '').trim() : '';
+
+    if (cols.every(c => !c || c.trim() === '')) return null;
+
+    const brand = cleanCol(cols[0]) || 'Unknown Brand';
+    const name = cleanCol(cols[1]) || 'Unknown Model'; // Model
+    const serialNumber = cleanCol(cols[2]) || `NO-SN-${Date.now()}-${index}`; 
+    const phoneNumber = cleanCol(cols[3]);
+    const employeeId = formatEmployeeId(cleanCol(cols[4])); 
+    const location = cleanCol(cols[5]); 
+    
+    let rawStatus = cols.length > 9 ? cleanCol(cols[9]) : ''; 
+    const s = rawStatus.toLowerCase().trim(); // แปลงเป็นตัวพิมพ์เล็กทั้งหมดเพื่อเช็ค
+    
+    let status = 'available'; 
+    let isCentral = false;
+
+    // ✅ ปรับ Logic การเช็คสถานะให้ครอบคลุม "Pending Recheck"
+    if (s.includes('lost')) {
+        status = 'lost';
+    } else if (s.includes('damaged') || s.includes('broken') || s.includes('write-off')) {
+        status = 'broken';
+    } else if (s.includes('pending') && s.includes('recheck')) { 
+        // ✅ ดักจับคำว่า "pending recheck" (case-insensitive จากตัวแปร s)
+        status = 'pending_recheck';
+    } else if (s.includes('pending') || s.includes('repair')) {
+        status = 'repair';
+    } else if (s.includes('pending_vendor')) {
+        status = 'pending_vendor';
+    } else {
+        if (employeeId) {
+            status = 'assigned';
+        } else if (location) {
+             if (s.includes('central') || s.includes('hub')) {
+                status = 'assigned';
+                isCentral = true;
+             } else {
+                status = 'assigned';
+                isCentral = true;
+             }
+        } else {
+            if (s.includes('active') && !s.includes('stock')) {
+                 status = 'assigned'; 
+            } else {
+                 status = 'available';
+            }
+        }
+    }
+    
+    if (!isCentral && (location.toLowerCase().includes('hub') || location.toLowerCase().includes('central'))) {
+        isCentral = true;
+        if (status === 'available') status = 'assigned';
+    }
+
+    return {
+      brand,
+      name, 
+      serialNumber,
+      phoneNumber,
+      employeeId,
+      location,
+      category: 'mobile',
+      isRental: false,
+      isCentral,
+      status
+    };
+  }).filter(item => item !== null);
+};
+
 export const generateHandoverHtml = (asset) => {
   const dateObj = new Date();
   const day = dateObj.getDate();
@@ -118,9 +185,22 @@ export const generateHandoverHtml = (asset) => {
   const year = dateObj.getFullYear() + 543;
   const shortDateStr = `${day}/${dateObj.getMonth()+1}/${year.toString().slice(-2)}`;
 
-  // 🔒 SECURITY FIX: Sanitize ข้อมูลก่อนนำไปแสดงผลใน HTML
-  const safeAssetName = escapeHtml(asset.name);
-  const safeSerialNumber = escapeHtml(asset.serialNumber);
+  const safeAssetName = asset.name && !asset.name.includes('Unknown Model') 
+      ? escapeHtml(asset.name) 
+      : '<span style="color: red;">ไม่มีข้อมูลในระบบ รอตรวจสอบ</span>';
+
+  const safeSerialNumber = asset.serialNumber && !asset.serialNumber.startsWith('NO-SN-')
+      ? escapeHtml(asset.serialNumber) 
+      : '<span style="color: red;">ไม่มีข้อมูลในระบบ รอตรวจสอบ</span>';
+
+  let assetDetail = safeAssetName;
+  if (asset.category === 'mobile') {
+      const phoneText = asset.phoneNumber 
+          ? `(เบอร์: ${escapeHtml(asset.phoneNumber)})` 
+          : `<span style="color: red; font-size: 12px;">(เบอร์: ไม่มีข้อมูลในระบบ รอตรวจสอบ)</span>`;
+      assetDetail = `${safeAssetName} <br/> ${phoneText}`;
+  }
+  
   const safeReceiverName = escapeHtml(asset.assignedTo || '.......................................................................');
   const safeCompanyName = escapeHtml(COMPANY_INFO.companyName);
   const safeAuthorizedName = escapeHtml(COMPANY_INFO.authorizedName);
@@ -129,7 +209,7 @@ export const generateHandoverHtml = (asset) => {
   return `
     <html>
       <head>
-        <title>แบบบันทึกรับ – คืนทรัพย์สินบริษัท - ${safeSerialNumber}</title>
+        <title>แบบบันทึกรับ – คืนทรัพย์สินบริษัท - ${asset.serialNumber}</title>
         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
         <style>
           @page { size: A4; margin: 15mm 20mm; }
@@ -139,31 +219,13 @@ export const generateHandoverHtml = (asset) => {
           .content { text-align: justify; margin-bottom: 12px; }
           .indent { text-indent: 40px; }
           .bold { font-weight: bold; }
-          
-          .signatures { 
-            margin-top: 40px; 
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            padding-right: 50px;
-          }
-          .sign-box { 
-            width: 400px;
-            text-align: left;
-            margin-bottom: 30px;
-          }
-          
+          .signatures { margin-top: 40px; width: 100%; display: flex; flex-direction: column; align-items: flex-end; padding-right: 50px; }
+          .sign-box { width: 400px; text-align: left; margin-bottom: 30px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
           th, td { border: 1px solid black; padding: 5px; text-align: center; vertical-align: middle; height: 25px; }
           th { background-color: #f9f9f9; }
-          
           .note { margin-top: 10px; font-size: 12px; font-weight: bold; }
-          
-          @media print {
-            body { padding: 0; }
-            button { display: none; }
-          }
+          @media print { body { padding: 0; } button { display: none; } }
         </style>
       </head>
       <body>
@@ -229,7 +291,7 @@ export const generateHandoverHtml = (asset) => {
               <tbody>
                   <tr>
                       <td>1</td>
-                      <td>${safeAssetName}</td>
+                      <td>${assetDetail}</td>
                       <td>${safeSerialNumber}</td>
                       <td>${shortDateStr}</td>
                       <td style="font-size: 10px;">${safeReceiverName.split('(')[0]}</td>
@@ -270,22 +332,26 @@ export const generateHandoverHtml = (asset) => {
   `;
 };
 
-// ✅ เพิ่มฟังก์ชันใหม่สำหรับการ Export CSV
+// ✅ เพิ่ม Phone Number ใน Export CSV
 export const exportToCSV = (assets) => {
   if (!assets || assets.length === 0) return;
 
   const headers = [
-    "Asset Name,Brand,Serial Number,Category,Status,Assigned To,Employee ID,Department,Position,Is Rental,Is Central,Location,Notes"
+    "Asset Name,Brand,Serial Number,Phone Number,Category,Status,Assigned To,Employee ID,Department,Position,Is Rental,Is Central,Location,Notes"
   ];
 
   const rows = assets.map(asset => {
     // ✅ แปลง Status ID เป็น Label ภาษาไทย
     const statusLabel = Object.values(STATUSES).find(s => s.id === asset.status)?.label || asset.status || '';
 
+    // ถ้าไม่มีข้อมูล ให้ export ว่า 'ไม่มีข้อมูล' เพื่อความชัดเจน (Optional) หรือจะปล่อยว่างก็ได้
+    // ในที่นี้ปล่อยว่างตาม convention CSV ปกติ แต่ตอน Import เราจัดการ 'Unknown' ไว้แล้ว
+
     return [
       `"${asset.name || ''}"`,
       `"${asset.brand || ''}"`,
       `"${asset.serialNumber || ''}"`,
+      `"${asset.phoneNumber || ''}"`, // เพิ่ม Phone Number
       `"${asset.category || ''}"`,
       `"${statusLabel}"`, // ใช้ Label ภาษาไทย
       `"${asset.assignedTo || ''}"`,
