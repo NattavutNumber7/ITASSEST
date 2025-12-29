@@ -301,65 +301,59 @@ export default function App() {
     }
   };
 
-  // ✅ ฟังก์ชัน Sync ไป Google Sheet (ปรับปรุง: Fire-and-Forget ไม่ต้องรอ Server ตอบกลับ)
-  const handleSyncToSheet = () => {
+  // ✅ ฟังก์ชัน Sync ไป Google Sheet (แก้ไข: ตัด keepalive และใช้ async/await)
+  const handleSyncToSheet = async () => {
     if (!exportUrl) {
         showNotification('กรุณาตั้งค่า Google Apps Script URL ก่อน', 'error');
         setShowSettings(true);
         return;
     }
     
-    // ตั้งค่า Loading ชั่วคราวเพื่อกันการกดซ้ำรัวๆ
     setIsSyncingSheet(true);
     
-    // ใช้ setTimeout เพื่อให้ React render Loading state ขึ้นมาแว๊บนึง ก่อนเริ่ม process
-    setTimeout(() => {
-        try {
-            // 1. เตรียมข้อมูล (เร็วมากเพราะใช้ Local State)
-            const payload = {
-                assets: assets.map(a => ({
-                    id: a.id,
-                    name: a.name || '',
-                    brand: a.brand || '',
-                    serialNumber: a.serialNumber || '',
-                    category: a.category || '',
-                    status: a.status || '',
-                    assignedTo: a.assignedTo || '', // สำคัญ: ต้องส่งค่าว่างถ้าไม่มี
-                    employeeId: a.employeeId || '',
-                    department: a.department || '',
-                    position: a.position || '',
-                    isRental: !!a.isRental,
-                    isCentral: !!a.isCentral,
-                    location: a.location || '',
-                    notes: a.notes || ''
-                }))
-            };
+    try {
+        // 1. เตรียมข้อมูล
+        const payload = {
+            assets: assets.map(a => ({
+                id: a.id,
+                name: a.name || '',
+                brand: a.brand || '',
+                serialNumber: a.serialNumber || '',
+                category: a.category || '',
+                status: a.status || '',
+                assignedTo: a.assignedTo || '', 
+                employeeId: a.employeeId || '',
+                department: a.department || '',
+                position: a.position || '',
+                isRental: !!a.isRental,
+                isCentral: !!a.isCentral,
+                location: a.location || '',
+                notes: a.notes || ''
+            }))
+        };
 
-            const cleanUrl = exportUrl.trim();
-            const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-            
-            console.log("Sending payload to Google Sheet (Background Mode)...");
+        const cleanUrl = exportUrl.trim();
+        const targetUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        
+        console.log("Sending payload to Google Sheet...");
 
-            // 2. ส่งแบบ Fire-and-Forget (ไม่ต้อง await รอ Server ตอบกลับ)
-            fetch(targetUrl, {
-                method: 'POST',
-                mode: 'no-cors', // สำคัญ: ใช้ no-cors เพื่อเลี่ยงปัญหา browser block
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload),
-                keepalive: true // พยายามส่งต่อแม้ User ปิด tab (รองรับเฉพาะ payload ขนาดเล็ก-กลาง)
-            }).catch(err => {
-                console.error("Background Network Dispatch Error:", err);
-            });
-            
-            // 3. ปลดล็อกหน้าจอทันที ไม่ต้องรอ Server ประมวลผลเสร็จ
-            showNotification('กำลังอัปเดตข้อมูลไปยัง Sheet ในเบื้องหลัง (เสร็จสิ้นใน 1-2 นาที)');
-        } catch (error) {
-            console.error("Sync Error:", error);
-            showNotification('เกิดข้อผิดพลาดในการเตรียมข้อมูล', 'error');
-        } finally {
-            setIsSyncingSheet(false);
-        }
-    }, 100);
+        // 2. ส่งแบบปกติ (รอการส่งออกไป แต่ไม่รอ Response 200 OK เพราะ no-cors ซ่อน status)
+        // ⚠️ สำคัญ: เอา keepalive: true ออก เพราะจำกัดขนาดแค่ 64KB ซึ่งข้อมูล Asset มักจะเกิน
+        await fetch(targetUrl, {
+            method: 'POST',
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        
+        // 3. แจ้งเตือนเมื่อส่ง Request ออกไปแล้ว
+        showNotification('ส่งคำขออัปเดตข้อมูลไปยัง Sheet เรียบร้อยแล้ว');
+    } catch (error) {
+        console.error("Sync Error:", error);
+        showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล (Network Error)', 'error');
+    } finally {
+        setIsSyncingSheet(false);
+    }
   };
 
   const lookupEmployee = (id) => { 
