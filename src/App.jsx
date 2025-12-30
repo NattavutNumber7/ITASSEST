@@ -24,11 +24,10 @@ import Login from './components/Login.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import ReturnModal from './components/ReturnModal.jsx'; 
 import DeleteModal from './components/DeleteModal.jsx';
-import DeletedLogModal from './components/DeletedLogModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import BulkEditModal from './components/BulkEditModal.jsx'; 
 import UserManagement from './components/UserManagement.jsx'; 
-import GlobalLog from './components/GlobalLog.jsx'; // ✅ Import GlobalLog
+import GlobalLog from './components/GlobalLog.jsx'; 
 
 const ITEMS_PER_PAGE = 50; 
 
@@ -80,7 +79,6 @@ export default function App() {
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
-  const [showDeletedLog, setShowDeletedLog] = useState(false); 
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   const sanitizeInput = (input) => {
@@ -384,7 +382,7 @@ export default function App() {
             <Link to="/admin/users" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/users' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><Shield size={18} /> จัดการผู้ใช้ (Users)</Link>
             {/* ✅ New Link for Global Audit Log */}
             <Link to="/admin/logs" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/logs' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><History size={18} /> บันทึกกิจกรรมรวม (Logs)</Link>
-            <button onClick={() => setShowDeletedLog(true)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"><Trash2 size={18} /> ประวัติการลบ</button></div>)}
+            </div>)}
         </div>
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 min-w-[256px]"><div className="flex items-center gap-3 mb-3"><div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">{user.email.substring(0,2).toUpperCase()}</div><div className="flex-1 min-w-0"><p className="text-sm font-medium text-slate-700 truncate">{user.email}</p><p className="text-[10px] text-slate-500 uppercase">{isAdmin ? 'Administrator' : 'Viewer'}</p></div></div><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-white hover:text-red-600 hover:border-red-200 transition-all"><LogOut size={14} /> ออกจากระบบ</button></div>
     </aside>
@@ -412,6 +410,11 @@ export default function App() {
                 <div className="h-4 w-px bg-slate-300"></div>
                 <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
                 <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                
+                {/* ✅ Added missing filters back */}
+                <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
+                
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
                 {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={14} /></button>)}
             </div>
@@ -556,7 +559,7 @@ export default function App() {
       <HistoryModal show={historyModal.open} onClose={() => setHistoryModal({ open: false, asset: null })} asset={historyModal.asset} db={db} />
       <ReturnModal show={returnModal.open} onClose={() => setReturnModal({ ...returnModal, open: false })} onSubmit={handleReturnSubmit} data={returnModal} />
       <DeleteModal show={deleteModal.open} onClose={() => setDeleteModal({ open: false, asset: null })} onSubmit={handleDeleteSubmit} asset={deleteModal.asset} />
-      <DeletedLogModal show={showDeletedLog} onClose={() => setShowDeletedLog(false)} db={db} />
+      {/* ❌ DeletedLogModal ถูกลบออกแล้ว */}
       <BulkEditModal show={bulkEditModal.open} onClose={() => setBulkEditModal({ open: false })} onSubmit={handleBulkStatusChange} selectedCount={selectedIds.size} />
     </div>
   );
