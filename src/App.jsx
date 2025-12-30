@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-// นำเข้า getDoc เพื่อดึงข้อมูล Role
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, writeBatch, runTransaction, getDoc } from 'firebase/firestore'; 
-// นำเข้าเฉพาะฟังก์ชันที่จำเป็นจาก firebase/auth
+import { 
+  collection, addDoc, updateDoc, deleteDoc, doc, 
+  getDocs, serverTimestamp, writeBatch, runTransaction, getDoc,
+  query, where, orderBy, onSnapshot 
+} from 'firebase/firestore'; 
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
-// ไอคอนจาก lucide-react
-import { Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, FileSpreadsheet, CloudLightning, Menu, ChevronLeft, Smartphone, Info } from 'lucide-react'; // เพิ่ม Info icon
+import { 
+  Plus, Search, User, RotateCcw, Box, Trash2, Settings, Pencil, Tag, Printer, 
+  MoreVertical, ArrowRight, ArrowLeftRight, LogOut, History, LayoutDashboard, 
+  List, Filter, X, Building2, UserPlus, CheckSquare, Square, Check, ShieldAlert, 
+  FileSpreadsheet, CloudLightning, Menu, ChevronLeft, Smartphone, Info,
+  ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Loader2
+} from 'lucide-react';
 
-// นำเข้า Config และ Components
 import { auth, db, COLLECTION_NAME, LOGS_COLLECTION_NAME, CATEGORIES, STATUSES, COLORS, LOGO_URL } from './config.jsx';
 import { parseCSV, parseLaptopCSV, parseMobileCSV, generateHandoverHtml, exportToCSV } from './utils/helpers.js';
 import StatusBadge from './components/StatusBadge.jsx';
@@ -21,6 +27,8 @@ import DeletedLogModal from './components/DeletedLogModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import BulkEditModal from './components/BulkEditModal.jsx'; 
 
+const ITEMS_PER_PAGE = 50; // ✅ แสดงหน้าละ 50 รายการ
+
 export default function App() {
   // --- สถานะ (States) ---
   const [user, setUser] = useState(null); 
@@ -32,8 +40,10 @@ export default function App() {
   const [loading, setLoading] = useState(true); 
   const [view, setView] = useState('dashboard'); 
   
+  // ✅ Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
-  
   const [searchTerm, setSearchTerm] = useState(''); 
   
   const [filterStatus, setFilterStatus] = useState('all');
@@ -114,20 +124,13 @@ export default function App() {
       setAuthLoading(false);
     });
     
+    // Load Settings
     const savedUrl = localStorage.getItem('it_asset_sheet_url');
     if (savedUrl) { setSheetUrl(savedUrl); fetchEmployeesFromSheet(savedUrl); }
-    
-    const savedLaptopUrl = localStorage.getItem('it_asset_laptop_sheet_url');
-    if (savedLaptopUrl) { setLaptopSheetUrl(savedLaptopUrl); }
-
-    const savedMobileUrl = localStorage.getItem('it_asset_mobile_sheet_url'); 
-    if (savedMobileUrl) { setMobileSheetUrl(savedMobileUrl); }
-
-    const savedExportUrl = localStorage.getItem('it_asset_export_url');
-    if (savedExportUrl) setExportUrl(savedExportUrl);
-    
-    const savedMobileExportUrl = localStorage.getItem('it_asset_mobile_export_url');
-    if (savedMobileExportUrl) setMobileExportUrl(savedMobileExportUrl);
+    if (localStorage.getItem('it_asset_laptop_sheet_url')) setLaptopSheetUrl(localStorage.getItem('it_asset_laptop_sheet_url'));
+    if (localStorage.getItem('it_asset_mobile_sheet_url')) setMobileSheetUrl(localStorage.getItem('it_asset_mobile_sheet_url'));
+    if (localStorage.getItem('it_asset_export_url')) setExportUrl(localStorage.getItem('it_asset_export_url'));
+    if (localStorage.getItem('it_asset_mobile_export_url')) setMobileExportUrl(localStorage.getItem('it_asset_mobile_export_url'));
 
     const handleResize = () => {
         if (window.innerWidth < 1024) setIsSidebarOpen(false);
@@ -142,15 +145,24 @@ export default function App() {
     };
   }, []);
 
+  // ✅ ใช้ onSnapshot (Real-time) โหลดข้อมูลทั้งหมด
   useEffect(() => {
     if (!user) {
       setAssets([]);
       return;
     }
-    const unsubscribeSnapshot = onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
+    setLoading(true);
+    
+    // Query ข้อมูลทั้งหมด (เรียงตามวันที่สร้าง)
+    const q = query(
+      collection(db, COLLECTION_NAME), 
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // กรองเฉพาะรายการที่ไม่ถูกลบ
       const activeItems = items.filter(item => !item.isDeleted);
-      activeItems.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setAssets(activeItems);
       setLoading(false);
     }, (error) => {
@@ -158,7 +170,8 @@ export default function App() {
       showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
       setLoading(false);
     });
-    return () => unsubscribeSnapshot();
+
+    return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {
@@ -171,7 +184,9 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ✅ Reset หน้าเมื่อเปลี่ยน View หรือ Filter
   useEffect(() => {
+    setCurrentPage(1);
     setSelectedIds(new Set());
   }, [view, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
 
@@ -747,8 +762,9 @@ export default function App() {
   const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
   const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
 
+  // ✅ Client-side Filtering & Pagination
   const filteredAssets = useMemo(() => {
-    return assets.filter(a => {
+    const result = assets.filter(a => {
         const term = searchTerm.toLowerCase();
         const matchSearch = 
           a.name.toLowerCase().includes(term) || 
@@ -770,7 +786,13 @@ export default function App() {
     
         return matchSearch && matchViewCategory && matchStatus && matchBrand && matchDepartment && matchPosition && matchRental;
       });
+      return result;
   }, [assets, searchTerm, view, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental]);
+
+  // ✅ Pagination Logic
+  const totalItems = filteredAssets.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const displayedAssets = filteredAssets.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const clearFilters = () => { setFilterStatus('all'); setFilterBrand('all'); setFilterDepartment('all'); setFilterPosition('all'); setFilterRental('all'); setSearchTerm(''); };
   const isFiltered = filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
@@ -927,7 +949,16 @@ export default function App() {
             
             {notification && <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 text-white animate-fade-in`} style={{backgroundColor: notification.type === 'error' ? COLORS.error : COLORS.primary}}>{notification.message}</div>}
 
-            {view === 'dashboard' && <Dashboard assets={assets} />}
+            {view === 'dashboard' && (
+                <>
+                    {/* แจ้งเตือนเรื่อง Stats */}
+                    <div className="mb-4 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-100 flex items-center gap-2">
+                        <Info size={16}/> 
+                        <span>Dashboard จะแสดงข้อมูลสถิติจากทรัพย์สินที่โหลดมาล่าสุด ({assets.length} รายการ) หากต้องการดูภาพรวมทั้งหมด อาจต้องเลื่อนโหลดข้อมูลเพิ่ม</span>
+                    </div>
+                    <Dashboard assets={assets} />
+                </>
+            )}
 
             {view !== 'dashboard' && view !== 'add' && (
             <div className="space-y-4 animate-fade-in max-w-[1600px] mx-auto">
@@ -936,7 +967,7 @@ export default function App() {
                 <div className="flex flex-col xl:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                     <div className="flex-1 relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input type="text" placeholder="ค้นหา... (Serial, Name, Owner, Location)" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all focus:border-emerald-500 focus:ring-emerald-500/20" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        <input type="text" placeholder="ค้นหา... (ในรายการที่โหลดมาแล้ว)" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-1 transition-all focus:border-emerald-500 focus:ring-emerald-500/20" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
                     <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200 overflow-x-auto max-w-full">
                         <div className="flex items-center gap-2 px-2 text-slate-400 shrink-0"><Filter size={16} /><span className="text-xs font-medium uppercase hidden sm:inline">Filter</span></div>
@@ -973,14 +1004,15 @@ export default function App() {
 
                 {/* Table */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
-                {loading ? <div className="p-12 text-center text-slate-500">Loading...</div> : (
+                {loading ? <div className="p-12 text-center text-slate-500 flex flex-col items-center"><Loader2 className="animate-spin mb-2"/> Loading...</div> : (
+                    <>
                     <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold sticky top-0 z-10">
                         <tr>
                             <th className="px-4 py-4 w-10 text-center">
-                            <button onClick={() => handleSelectAll(filteredAssets)} className="text-slate-400 hover:text-slate-600 focus:outline-none" disabled={!isAdmin} title="เลือกทั้งหมด">
-                                {filteredAssets.length > 0 && selectedIds.size === filteredAssets.length ? <CheckSquare size={18} className={isAdmin ? "text-blue-600" : "text-slate-300"} /> : <Square size={18} className={!isAdmin ? "cursor-not-allowed text-slate-200" : ""} />}
+                            <button onClick={() => handleSelectAll(displayedAssets)} className="text-slate-400 hover:text-slate-600 focus:outline-none" disabled={!isAdmin} title="เลือกทั้งหมด">
+                                {displayedAssets.length > 0 && selectedIds.size === displayedAssets.length ? <CheckSquare size={18} className={isAdmin ? "text-blue-600" : "text-slate-300"} /> : <Square size={18} className={!isAdmin ? "cursor-not-allowed text-slate-200" : ""} />}
                             </button>
                             </th>
                             <th className="px-4 py-4">ทรัพย์สิน</th>
@@ -992,7 +1024,7 @@ export default function App() {
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                        {filteredAssets.length > 0 ? filteredAssets.map(asset => (
+                        {displayedAssets.length > 0 ? displayedAssets.map(asset => (
                             <tr key={asset.id} className={`hover:bg-slate-50 align-top transition-colors ${selectedIds.has(asset.id) ? 'bg-blue-50/30' : ''}`}>
                             <td className="px-4 py-4 text-center">
                                 <button onClick={() => handleSelectOne(asset.id)} className="focus:outline-none" disabled={!isAdmin}>
@@ -1070,6 +1102,35 @@ export default function App() {
                         </tbody>
                     </table>
                     </div>
+                    
+                    {/* ✅ Pagination Controls */}
+                    {totalItems > 0 && (
+                        <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-white">
+                            <div className="text-sm text-slate-500">
+                                แสดง <span className="font-medium text-slate-900">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> ถึง <span className="font-medium text-slate-900">{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)}</span> จาก <span className="font-medium text-slate-900">{totalItems}</span> รายการ
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeftIcon size={16} />
+                                </button>
+                                <span className="text-sm font-medium text-slate-700">
+                                    หน้า {currentPage} จาก {totalPages}
+                                </span>
+                                <button 
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronRightIcon size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    </>
                 )}
                 </div>
             </div>
