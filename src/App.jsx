@@ -24,6 +24,7 @@ import Login from './components/Login.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import ReturnModal from './components/ReturnModal.jsx'; 
 import DeleteModal from './components/DeleteModal.jsx';
+// ❌ ลบ import DeletedLogModal ออก
 import Dashboard from './components/Dashboard.jsx';
 import BulkEditModal from './components/BulkEditModal.jsx'; 
 import UserManagement from './components/UserManagement.jsx'; 
@@ -79,6 +80,7 @@ export default function App() {
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
+  // ❌ ลบ state showDeletedLog ออก
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   const sanitizeInput = (input) => {
@@ -380,7 +382,6 @@ export default function App() {
             {isAdmin && (<div className="pt-4 pb-2"><p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Admin Tools</p>
             <Link to="/add" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/add' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><Plus size={18} /> เพิ่มรายการใหม่</Link>
             <Link to="/admin/users" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/users' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><Shield size={18} /> จัดการผู้ใช้ (Users)</Link>
-            {/* ✅ New Link for Global Audit Log */}
             <Link to="/admin/logs" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/logs' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><History size={18} /> บันทึกกิจกรรมรวม (Logs)</Link>
             </div>)}
         </div>
@@ -410,11 +411,8 @@ export default function App() {
                 <div className="h-4 w-px bg-slate-300"></div>
                 <select value={filterBrand} onChange={(e) => setFilterBrand(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกยี่ห้อ</option>{uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
                 <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกแผนก</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                
-                {/* ✅ Added missing filters back */}
                 <select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกตำแหน่ง</option>{uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
                 <select value={filterRental} onChange={(e) => setFilterRental(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกประเภท</option><option value="owned">เครื่องบริษัท</option><option value="rental">เครื่องเช่า</option></select>
-                
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm bg-transparent border-none focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1 max-w-[100px] truncate"><option value="all">ทุกสถานะ</option>{Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
                 {isFiltered && (<button onClick={clearFilters} className="ml-1 p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={14} /></button>)}
             </div>
@@ -441,6 +439,7 @@ export default function App() {
                     <th className="px-4 py-4">ทรัพย์สิน</th>
                     <th className="px-4 py-4">สถานะ</th>
                     <th className="px-4 py-4">ผู้ถือครอง</th>
+                    <th className="px-4 py-4">ตำแหน่ง</th> 
                     <th className="px-4 py-4">แผนก</th>
                     <th className="px-4 py-4 text-right">จัดการ</th>
                 </tr>
@@ -460,6 +459,7 @@ export default function App() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
                     <td className="px-4 py-4">{asset.isCentral ? (<div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>) : asset.status === 'assigned' ? (<div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>) : '-'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
                     <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                     <td className="px-4 py-4 text-right relative">
                         <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><MoreVertical size={20} /></button>
