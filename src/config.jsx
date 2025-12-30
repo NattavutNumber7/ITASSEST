@@ -45,17 +45,14 @@ export const COLORS = {
   success: '#008065'
 };
 
-// ✅ ปรับปรุงหมวดหมู่ใหม่ตามความต้องการ
+// ✅ ปรับปรุงหมวดหมู่ พร้อมกำหนดสีประจำหมวดหมู่
 export const CATEGORIES = [
-  { id: 'laptop', name: 'Laptop / PC', icon: <Laptop size={18} /> },
-  { id: 'monitor', name: 'Monitor', icon: <Monitor size={18} /> },
-  { id: 'mobile', name: 'Mobile', icon: <Smartphone size={18} /> },
-  { id: 'scanner', name: 'Scanner', icon: <Printer size={18} /> }, // ใช้ icon Printer แทน Scanner
-  { id: 'power_station', name: 'Power Station', icon: <Battery size={18} /> },
-  { id: 'handheld', name: 'Handheld Device', icon: <ScanBarcode size={18} /> },
-  // สามารถเปิดคอมเมนต์ด้านล่างถ้ายังต้องการหมวดหมู่อื่นๆ
-  // { id: 'peripheral', name: 'Peripheral', icon: <Mouse size={18} /> },
-  // { id: 'accessory', name: 'Accessory', icon: <Headphones size={18} /> },
+  { id: 'laptop', name: 'Laptop / PC', icon: <Laptop size={18} />, color: '#3b82f6', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' }, // Blue
+  { id: 'monitor', name: 'Monitor', icon: <Monitor size={18} />, color: '#8b5cf6', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' }, // Violet
+  { id: 'mobile', name: 'Mobile', icon: <Smartphone size={18} />, color: '#ec4899', bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' }, // Pink
+  { id: 'scanner', name: 'Scanner', icon: <Printer size={18} />, color: '#f97316', bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' }, // Orange
+  { id: 'power_station', name: 'Power Station', icon: <Battery size={18} />, color: '#eab308', bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' }, // Yellow
+  { id: 'handheld', name: 'Handheld Device', icon: <ScanBarcode size={18} />, color: '#06b6d4', bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' }, // Cyan
 ];
 
 export const STATUSES = {
@@ -64,7 +61,6 @@ export const STATUSES = {
   BROKEN: { id: 'broken', label: 'ชำรุด', color: 'bg-red-50 text-red-700 border-red-200' },
   REPAIR: { id: 'repair', label: 'ส่งซ่อม', color: 'bg-[#ff6600]/10 text-[#ff6600] border-[#ff6600]/30' },
   PENDING_VENDOR: { id: 'pending_vendor', label: 'รอส่งคืน Vendor', color: 'bg-purple-100 text-purple-700 border-purple-300' },
-  // ✅ เพิ่มสถานะใหม่ PENDING_RECHECK
   PENDING_RECHECK: { id: 'pending_recheck', label: 'รอตรวจสอบ', color: 'bg-purple-50 text-purple-600 border-purple-200' },
   LOST: { id: 'lost', label: 'สูญหาย', color: 'bg-slate-100 text-slate-500 border-slate-300' },
 };

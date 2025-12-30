@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search, Truck, HelpCircle, Info } from 'lucide-react'; // เพิ่ม Info icon
+import { Box, CheckCircle, User, AlertTriangle, Wrench, PieChart as PieIcon, BarChart3, ArrowUpRight, Filter, X, Search, Truck, HelpCircle, Info } from 'lucide-react';
 import { CATEGORIES, COLORS, STATUSES } from '../config.jsx';
 
 const Dashboard = ({ assets }) => {
@@ -36,27 +36,26 @@ const Dashboard = ({ assets }) => {
     return { total, available, assigned, personAssigned, centralAssigned, broken, repair, lost, pendingVendor, pendingRecheck, byCategory };
   }, [filteredAssets]);
 
-  const getPieChartStyle = () => {
+  // ✅ ฟังก์ชันสร้าง Pie Chart ตามหมวดหมู่ (Category) พร้อมสีที่กำหนดเอง
+  const getCategoryPieChartStyle = () => {
     if (stats.total === 0) return { background: '#e2e8f0' };
     
-    const pAvailable = (stats.available / stats.total) * 100;
-    const pAssigned = pAvailable + (stats.assigned / stats.total) * 100;
-    const pRepair = pAssigned + (stats.repair / stats.total) * 100;
-    const pBroken = pRepair + (stats.broken / stats.total) * 100;
-    const pPendingVendor = pBroken + (stats.pendingVendor / stats.total) * 100; 
-    const pPendingRecheck = pPendingVendor + (stats.pendingRecheck / stats.total) * 100; 
-    const pLost = pPendingRecheck + (stats.lost / stats.total) * 100;
-    
+    let gradientParts = [];
+    let currentPercentage = 0;
+
+    stats.byCategory.forEach(cat => {
+      if (cat.count > 0) {
+        const start = currentPercentage;
+        const end = currentPercentage + cat.percentage;
+        gradientParts.push(`${cat.color} ${start}% ${end}%`);
+        currentPercentage = end;
+      }
+    });
+
+    if (gradientParts.length === 0) return { background: '#e2e8f0' };
+
     return {
-      background: `conic-gradient(
-        ${COLORS.success} 0% ${pAvailable}%, 
-        ${COLORS.primary} ${pAvailable}% ${pAssigned}%, 
-        ${COLORS.secondary} ${pAssigned}% ${pRepair}%, 
-        ${COLORS.error} ${pRepair}% ${pBroken}%,
-        #d8b4fe ${pBroken}% ${pPendingVendor}%, 
-        #a855f7 ${pPendingVendor}% ${pPendingRecheck}%, 
-        #94a3b8 ${pPendingRecheck}% 100% 
-      )`
+      background: `conic-gradient(${gradientParts.join(', ')})`
     };
   };
 
@@ -95,7 +94,6 @@ const Dashboard = ({ assets }) => {
                     value={filterCategory} 
                     onChange={(e) => setFilterCategory(e.target.value)}
                     className="text-sm border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1"
-                    title="กรองตามหมวดหมู่"
                 >
                     <option value="all">ทุกหมวดหมู่</option>
                     {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -107,7 +105,6 @@ const Dashboard = ({ assets }) => {
                     value={filterStatus} 
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="text-sm border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer hover:text-slate-800 outline-none py-1"
-                    title="กรองตามสถานะ"
                 >
                     <option value="all">ทุกสถานะ</option>
                     {Object.values(STATUSES).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -117,7 +114,6 @@ const Dashboard = ({ assets }) => {
                     <button 
                         onClick={clearFilters}
                         className="ml-1 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition-colors"
-                        title="ล้างตัวกรอง"
                     >
                         <X size={14} />
                     </button>
@@ -130,8 +126,7 @@ const Dashboard = ({ assets }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard title="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} icon={<CheckCircle size={24} />} color="bg-emerald-500" bgColor="bg-emerald-50" textColor="text-emerald-700" tooltip="อุปกรณ์ที่อยู่ในคลัง พร้อมสำหรับเบิกใช้งาน" />
         
-        {/* แยก Card ใช้งานอยู่ ให้เห็นชัดเจนขึ้น */}
-        <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all relative group`} title="อุปกรณ์ที่กำลังถูกใช้งานโดยพนักงานหรือเป็นเครื่องกลาง">
+        <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all relative group`}>
             <div className="flex justify-between items-start">
             <div>
                 <p className="text-sm text-slate-500 font-medium mb-1">ถูกใช้งานอยู่</p>
@@ -158,39 +153,40 @@ const Dashboard = ({ assets }) => {
         <StatCard title="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} icon={<Truck size={24} />} color="bg-purple-500" bgColor="bg-purple-50" textColor="text-purple-700" tooltip="เครื่องเช่าที่หมดสัญญา รอส่งคืนบริษัทคู่ค้า" />
         
         <StatCard title="รอตรวจสอบ" count={stats.pendingRecheck} total={stats.total} icon={<HelpCircle size={24} />} color="bg-purple-600" bgColor="bg-purple-50" textColor="text-purple-700" tooltip="อุปกรณ์ที่ยังไม่ยืนยันสถานะ หรือรอการตรวจเช็คสภาพ" />
-        
-        <StatCard title="สูญหาย" count={stats.lost} total={stats.total} icon={<Search size={24} />} color="bg-slate-500" bgColor="bg-slate-100" textColor="text-slate-600" tooltip="อุปกรณ์ที่ตรวจสอบไม่พบ" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Pie Chart */}
+        {/* ✅ Pie Chart: แสดงสัดส่วนหมวดหมู่ (Category) */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex justify-between items-start mb-6">
-             <h3 className="font-bold text-slate-700 flex items-center gap-2"><PieIcon size={20} className="text-slate-400"/> สัดส่วนสถานะ</h3>
+             <h3 className="font-bold text-slate-700 flex items-center gap-2"><PieIcon size={20} className="text-slate-400"/> สัดส่วนหมวดหมู่</h3>
              <div className="group relative">
                 <Info size={16} className="text-slate-400 cursor-help"/>
                 <div className="absolute right-0 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    แสดงสัดส่วนของอุปกรณ์ตามสถานะต่างๆ เทียบกับจำนวนทั้งหมด
+                    แสดงสัดส่วนของทรัพย์สินแยกตามหมวดหมู่
                 </div>
              </div>
           </div>
           
           {stats.total > 0 ? (
             <div className="flex flex-col items-center">
-                <div className="relative w-48 h-48 rounded-full mb-6 shadow-inner" style={getPieChartStyle()}>
+                <div className="relative w-48 h-48 rounded-full mb-6 shadow-inner" style={getCategoryPieChartStyle()}>
                 <div className="absolute inset-0 m-auto w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col">
                     <span className="text-slate-400 text-xs font-medium uppercase">Total</span>
                     <span className="text-3xl font-bold text-slate-800">{stats.total}</span>
                 </div>
                 </div>
                 <div className="w-full space-y-3">
-                <LegendItem color={COLORS.success} label="ว่าง (พร้อมใช้)" count={stats.available} total={stats.total} />
-                <LegendItem color={COLORS.primary} label="ใช้งานอยู่" count={stats.assigned} total={stats.total} />
-                <LegendItem color={COLORS.secondary} label="ส่งซ่อม" count={stats.repair} total={stats.total} />
-                <LegendItem color={COLORS.error} label="ชำรุด" count={stats.broken} total={stats.total} />
-                <LegendItem color="#d8b4fe" label="รอส่งคืน Vendor" count={stats.pendingVendor} total={stats.total} /> 
-                <LegendItem color="#a855f7" label="รอตรวจสอบ" count={stats.pendingRecheck} total={stats.total} /> 
-                <LegendItem color="#94a3b8" label="สูญหาย" count={stats.lost} total={stats.total} />
+                  {/* Legend Loop ตาม Categories */}
+                  {stats.byCategory.map(cat => (
+                     <LegendItem 
+                        key={cat.id} 
+                        color={cat.color} 
+                        label={cat.name} 
+                        count={cat.count} 
+                        total={stats.total} 
+                     />
+                  ))}
                 </div>
             </div>
           ) : (
@@ -201,10 +197,10 @@ const Dashboard = ({ assets }) => {
           )}
         </div>
 
-        {/* Bar Chart */}
+        {/* ✅ Bar Chart: แยกสีตามหมวดหมู่ */}
         <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex justify-between items-start mb-6">
-             <h3 className="font-bold text-slate-700 flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> แยกตามหมวดหมู่</h3>
+             <h3 className="font-bold text-slate-700 flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> รายละเอียดแยกตามหมวดหมู่</h3>
              <div className="text-xs text-slate-400">เรียงตามจำนวนจากมากไปน้อย</div>
           </div>
           
@@ -214,23 +210,36 @@ const Dashboard = ({ assets }) => {
                     {stats.byCategory.map((cat) => (
                     <div key={cat.id} className="group">
                         <div className="flex justify-between items-end mb-1">
-                        <div className="flex items-center gap-2 text-slate-700 font-medium">
-                            <div className="p-1.5 bg-slate-100 rounded text-slate-500 group-hover:text-white group-hover:bg-[#008065] transition-colors">{cat.icon}</div>
-                            {cat.name}
+                        <div className="flex items-center gap-2 font-medium" style={{ color: cat.count > 0 ? cat.text : '#94a3b8' }}>
+                            {/* Icon กลมๆ สีตามหมวดหมู่ */}
+                            <div className={`p-1.5 rounded ${cat.bg} ${cat.text}`}>
+                                {cat.icon}
+                            </div>
+                            <span className={cat.count > 0 ? 'text-slate-700' : 'text-slate-400'}>{cat.name}</span>
                         </div>
                         <div className="text-sm text-slate-500"><span className="font-bold text-slate-800">{cat.count}</span> รายการ</div>
                         </div>
+                        
+                        {/* Bar สีตามหมวดหมู่ */}
                         <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden" title={`${cat.count} รายการ (${cat.percentage.toFixed(1)}%)`}>
-                        <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${cat.percentage}%`, backgroundColor: COLORS.primary, minWidth: cat.count > 0 ? '4px' : '0' }}></div>
+                           <div 
+                              className="h-full rounded-full transition-all duration-1000 ease-out" 
+                              style={{ 
+                                width: `${cat.percentage}%`, 
+                                backgroundColor: cat.color, 
+                                minWidth: cat.count > 0 ? '4px' : '0' 
+                              }}
+                           ></div>
                         </div>
                     </div>
                     ))}
                 </div>
+                
                 <div className="mt-8 p-4 bg-slate-50 rounded-lg border border-slate-200 flex items-start gap-3">
                     <div className="p-2 bg-blue-100 text-blue-600 rounded-full shrink-0"><ArrowUpRight size={18} /></div>
                     <div>
                     <h4 className="text-sm font-bold text-slate-700">Quick Tip</h4>
-                    <p className="text-xs text-slate-500 mt-1">หมวดหมู่ที่มีทรัพย์สินมากที่สุด (ในกลุ่มที่เลือก) คือ <span className="font-bold text-blue-600">{stats.byCategory[0]?.name || '-'}</span> คิดเป็น {stats.byCategory[0]?.percentage.toFixed(1)}%</p>
+                    <p className="text-xs text-slate-500 mt-1">หมวดหมู่ที่มีทรัพย์สินมากที่สุด (ในกลุ่มที่เลือก) คือ <span className="font-bold" style={{color: stats.byCategory[0]?.color}}>{stats.byCategory[0]?.name || '-'}</span> คิดเป็น {stats.byCategory[0]?.percentage.toFixed(1)}%</p>
                     </div>
                 </div>
             </>
@@ -245,7 +254,7 @@ const Dashboard = ({ assets }) => {
   );
 };
 
-// ✅ ปรับ StatCard ให้รองรับ Tooltip
+// StatCard ยังคงใช้สีตามสถานะ เพื่อให้แยกแยะง่ายเช่นเดิม
 const StatCard = ({ title, count, total, icon, color, bgColor, textColor, tooltip }) => (
   <div className={`p-5 rounded-xl border border-slate-100 shadow-sm bg-white hover:shadow-md transition-all relative group`} title={tooltip}>
     <div className="flex justify-between items-start">
@@ -253,18 +262,10 @@ const StatCard = ({ title, count, total, icon, color, bgColor, textColor, toolti
       <div className={`p-2.5 rounded-lg ${bgColor} ${textColor}`}>{icon}</div>
     </div>
     <div className="mt-3 w-full bg-slate-100 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${color}`} style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }}></div></div>
-    
-    {/* Optional: Custom Tooltip popup (ถ้าไม่ใช้ native title attribute) */}
-    {/* {tooltip && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 text-center">
-            {tooltip}
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
-        </div>
-    )} 
-    */}
   </div>
 );
 
+// Legend Item
 const LegendItem = ({ color, label, count, total }) => (
   <div className="flex items-center justify-between text-sm">
     <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></span><span className="text-slate-600">{label}</span></div>
