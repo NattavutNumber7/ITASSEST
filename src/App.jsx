@@ -24,7 +24,6 @@ import Login from './components/Login.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import ReturnModal from './components/ReturnModal.jsx'; 
 import DeleteModal from './components/DeleteModal.jsx';
-// ❌ ลบ import DeletedLogModal ออก
 import Dashboard from './components/Dashboard.jsx';
 import BulkEditModal from './components/BulkEditModal.jsx'; 
 import UserManagement from './components/UserManagement.jsx'; 
@@ -80,7 +79,6 @@ export default function App() {
   const [historyModal, setHistoryModal] = useState({ open: false, asset: null });
   const [returnModal, setReturnModal] = useState({ open: false, asset: null, type: 'RETURN' });
   const [deleteModal, setDeleteModal] = useState({ open: false, asset: null });
-  // ❌ ลบ state showDeletedLog ออก
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   const sanitizeInput = (input) => {
@@ -162,7 +160,11 @@ export default function App() {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching data:", error);
-      showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
+      if (error.code === 'resource-exhausted') {
+         showNotification('โควตาการใช้งาน Firebase เต็ม กรุณาลองใหม่วันพรุ่งนี้', 'error');
+      } else {
+         showNotification('โหลดข้อมูลล้มเหลว (Permission Denied)', 'error');
+      }
       setLoading(false);
     });
 
@@ -192,9 +194,17 @@ export default function App() {
 
   const currentViewCategory = getCurrentCategory();
 
-  const uniqueBrands = [...new Set(assets.map(a => a.brand).filter(Boolean))].sort();
-  const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
-  const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
+  // ✅ แก้ไข: สร้างตัวแปร assetsForFilter ที่กรองตามหมวดหมู่ปัจจุบันก่อนนำไปสร้างตัวเลือก
+  const assetsForFilter = useMemo(() => {
+    if (currentViewCategory) {
+      return assets.filter(a => a.category === currentViewCategory);
+    }
+    return assets;
+  }, [assets, currentViewCategory]);
+
+  const uniqueBrands = [...new Set(assetsForFilter.map(a => a.brand).filter(Boolean))].sort();
+  const uniqueDepartments = [...new Set(assetsForFilter.map(a => a.department).filter(Boolean))].sort();
+  const uniquePositions = [...new Set(assetsForFilter.map(a => a.position).filter(Boolean))].sort();
 
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
@@ -362,8 +372,8 @@ export default function App() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div><span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span></div></div>;
   if (!user) return <Login message={loginError} />;
 
-  // --- Shared Components for Layout ---
-  const Sidebar = () => (
+  // --- Shared Render Functions (Fix for focus loss) ---
+  const renderSidebar = () => (
     <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-r-0'} lg:static`}>
         <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-100 bg-white shrink-0 min-w-[256px]">
             <div className="p-1.5 rounded-lg text-white" style={{backgroundColor: COLORS.primary}}><img src={LOGO_URL} alt="Logo" className="w-5 h-5 object-contain filter brightness-0 invert" /></div>
@@ -389,7 +399,7 @@ export default function App() {
     </aside>
   );
 
-  const Header = ({ title }) => (
+  const renderHeader = (title) => (
     <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 lg:px-8 shrink-0">
         <div className="flex items-center gap-4"><button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-200 transition-colors">{isSidebarOpen ? <ChevronLeft size={24} /> : <Menu size={24} />}</button><h2 className="text-xl font-bold text-slate-800 truncate">{title}</h2></div>
         <div className="flex items-center gap-2">
@@ -399,7 +409,7 @@ export default function App() {
     </header>
   );
 
-  const AssetTable = () => (
+  const renderAssetTable = () => (
     <div className="space-y-4 animate-fade-in max-w-[1600px] mx-auto">
         <div className="flex flex-col xl:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
             <div className="flex-1 relative">
@@ -439,7 +449,6 @@ export default function App() {
                     <th className="px-4 py-4">ทรัพย์สิน</th>
                     <th className="px-4 py-4">สถานะ</th>
                     <th className="px-4 py-4">ผู้ถือครอง</th>
-                    <th className="px-4 py-4">ตำแหน่ง</th> 
                     <th className="px-4 py-4">แผนก</th>
                     <th className="px-4 py-4 text-right">จัดการ</th>
                 </tr>
@@ -459,7 +468,6 @@ export default function App() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={asset.status} /></td>
                     <td className="px-4 py-4">{asset.isCentral ? (<div className="flex flex-col"><span className="font-medium flex gap-1 text-blue-600"><Building2 size={14}/> เครื่องกลาง</span><span className="text-xs text-slate-500 ml-5">{asset.location}</span></div>) : asset.status === 'assigned' ? (<div className="flex flex-col"><span className="font-medium flex gap-1" style={{color: COLORS.primary}}><User size={14}/> {asset.assignedTo}</span><span className="text-xs text-slate-500 ml-5">{asset.employeeId}</span></div>) : '-'}</td>
-                    <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.position || '-'}</td>
                     <td className="px-4 py-4 text-sm text-slate-600 min-w-[150px]">{asset.department || '-'}</td>
                     <td className="px-4 py-4 text-right relative">
                         <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === asset.id ? null : asset.id); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><MoreVertical size={20} /></button>
@@ -520,7 +528,7 @@ export default function App() {
     </div>
   );
 
-  const AddAssetView = () => (
+  const renderAddAssetView = () => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto animate-fade-in">
         <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><Plus style={{color: COLORS.primary}} /> เพิ่มทรัพย์สินใหม่</h2>
         <form onSubmit={handleAddAsset} className="space-y-4">
@@ -535,19 +543,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans text-slate-900 bg-slate-50 flex overflow-hidden">
-      <Sidebar />
+      {renderSidebar()}
       {isSidebarOpen && (<div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>)}
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
         <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<><Header title="Dashboard" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><Dashboard assets={assets} /></div></>} />
-            <Route path="/assets/:category" element={<><Header title={CATEGORIES.find(c => c.id === currentViewCategory)?.name || 'รายการทรัพย์สิน'} /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><AssetTable /></div></>} />
-            <Route path="/add" element={isAdmin ? <><Header title="Add New Asset" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><AddAssetView /></div></> : <Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<>{renderHeader("Dashboard")}<div className="flex-1 overflow-y-auto p-4 lg:p-8"><Dashboard assets={assets} /></div></>} />
+            <Route path="/assets/:category" element={<>{renderHeader(CATEGORIES.find(c => c.id === currentViewCategory)?.name || 'รายการทรัพย์สิน')}<div className="flex-1 overflow-y-auto p-4 lg:p-8">{renderAssetTable()}</div></>} />
+            <Route path="/add" element={isAdmin ? <>{renderHeader("Add New Asset")}<div className="flex-1 overflow-y-auto p-4 lg:p-8">{renderAddAssetView()}</div></> : <Navigate to="/dashboard" replace />} />
             {/* ✅ New Route for User Management */}
-            <Route path="/admin/users" element={isAdmin ? <><Header title="User Management" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><UserManagement db={db} currentUser={user} /></div></> : <Navigate to="/dashboard" replace />} />
+            <Route path="/admin/users" element={isAdmin ? <>{renderHeader("User Management")}<div className="flex-1 overflow-y-auto p-4 lg:p-8"><UserManagement db={db} currentUser={user} /></div></> : <Navigate to="/dashboard" replace />} />
             {/* ✅ New Route for Global Logs */}
-            <Route path="/admin/logs" element={isAdmin ? <><Header title="Global Audit Log" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><GlobalLog db={db} isAdmin={isAdmin} /></div></> : <Navigate to="/dashboard" replace />} />
+            <Route path="/admin/logs" element={isAdmin ? <>{renderHeader("Global Audit Log")}<div className="flex-1 overflow-y-auto p-4 lg:p-8"><GlobalLog db={db} isAdmin={isAdmin} /></div></> : <Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
