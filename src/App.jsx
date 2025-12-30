@@ -28,11 +28,11 @@ import DeletedLogModal from './components/DeletedLogModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import BulkEditModal from './components/BulkEditModal.jsx'; 
 import UserManagement from './components/UserManagement.jsx'; 
+import GlobalLog from './components/GlobalLog.jsx'; // ✅ Import GlobalLog
 
-const ITEMS_PER_PAGE = 50; // ✅ กำหนดให้แสดงหน้าละ 50 รายการ
+const ITEMS_PER_PAGE = 50; 
 
 export default function App() {
-  // --- สถานะ (States) ---
   const [user, setUser] = useState(null); 
   const [isAdmin, setIsAdmin] = useState(false); 
   const [authLoading, setAuthLoading] = useState(true); 
@@ -41,13 +41,10 @@ export default function App() {
   const [assets, setAssets] = useState([]); 
   const [loading, setLoading] = useState(true); 
   
-  // Navigation Hooks
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ Pagination State (Client-Side)
   const [currentPage, setCurrentPage] = useState(1);
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [searchTerm, setSearchTerm] = useState(''); 
   
@@ -59,7 +56,6 @@ export default function App() {
 
   const [notification, setNotification] = useState(null); 
 
-  // Settings & Sync States
   const [sheetUrl, setSheetUrl] = useState('');
   const [laptopSheetUrl, setLaptopSheetUrl] = useState('');
   const [mobileSheetUrl, setMobileSheetUrl] = useState(''); 
@@ -78,7 +74,6 @@ export default function App() {
 
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // Modals States
   const [assignModal, setAssignModal] = useState({ open: false, assetId: null, assetName: '', empId: '', empName: '', empNickname: '', empPosition: '', empDept: '', empStatus: '', location: '' });
   const [editModal, setEditModal] = useState({ open: false, asset: null });
   const [newAsset, setNewAsset] = useState({ name: '', brand: '', serialNumber: '', category: 'laptop', notes: '', isRental: false, phoneNumber: '' });
@@ -97,7 +92,6 @@ export default function App() {
     return safe.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   };
 
-  // --- Auth Effect ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -129,7 +123,6 @@ export default function App() {
       setAuthLoading(false);
     });
     
-    // Load Saved Settings
     const savedUrl = localStorage.getItem('it_asset_sheet_url');
     if (savedUrl) { setSheetUrl(savedUrl); fetchEmployeesFromSheet(savedUrl); }
     if (localStorage.getItem('it_asset_laptop_sheet_url')) setLaptopSheetUrl(localStorage.getItem('it_asset_laptop_sheet_url'));
@@ -150,7 +143,6 @@ export default function App() {
     };
   }, []);
 
-  // --- Data Fetching Effect (Real-time onSnapshot) ---
   useEffect(() => {
     if (!user) {
       setAssets([]);
@@ -158,8 +150,6 @@ export default function App() {
     }
     setLoading(true);
     
-    // ✅ โหลดข้อมูลทั้งหมด (เหมือนเดิม) เพื่อให้คำนวณ Dashboard ได้ครบถ้วน
-    // และเพื่อความลื่นไหลในการเปลี่ยนหน้า (เพราะข้อมูลอยู่ใน Memory แล้ว)
     const q = query(
       collection(db, COLLECTION_NAME), 
       orderBy("createdAt", "desc")
@@ -167,7 +157,6 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // กรองเฉพาะรายการที่ยังไม่ถูกลบ
       const activeItems = items.filter(item => !item.isDeleted);
       setAssets(activeItems);
       setLoading(false);
@@ -190,29 +179,25 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Reset หน้าเมื่อเปลี่ยน URL (Category) หรือ Filter
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
   }, [location.pathname, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental, searchTerm]);
 
-  // Helper: ดึง Category ปัจจุบันจาก URL
   const getCurrentCategory = () => {
     const path = location.pathname.split('/');
-    if (path.includes('assets')) return path[path.length - 1]; // /assets/laptop -> laptop
+    if (path.includes('assets')) return path[path.length - 1]; 
     return null;
   };
 
   const currentViewCategory = getCurrentCategory();
 
-  // --- Logic การกรองข้อมูล (Filtering) ---
   const uniqueBrands = [...new Set(assets.map(a => a.brand).filter(Boolean))].sort();
   const uniqueDepartments = [...new Set(assets.map(a => a.department).filter(Boolean))].sort();
   const uniquePositions = [...new Set(assets.map(a => a.position).filter(Boolean))].sort();
 
   const filteredAssets = useMemo(() => {
     return assets.filter(a => {
-        // กรองตาม Category (จาก URL)
         if (currentViewCategory && a.category !== currentViewCategory) return false;
 
         const term = searchTerm.toLowerCase();
@@ -236,16 +221,13 @@ export default function App() {
       });
   }, [assets, searchTerm, currentViewCategory, filterStatus, filterBrand, filterDepartment, filterPosition, filterRental]);
 
-  // --- Logic การแบ่งหน้า (Pagination) ---
   const totalItems = filteredAssets.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  // ตัดข้อมูลมาแสดงเฉพาะหน้าปัจจุบัน
   const displayedAssets = filteredAssets.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const clearFilters = () => { setFilterStatus('all'); setFilterBrand('all'); setFilterDepartment('all'); setFilterPosition('all'); setFilterRental('all'); setSearchTerm(''); };
   const isFiltered = filterStatus !== 'all' || filterBrand !== 'all' || filterDepartment !== 'all' || filterPosition !== 'all' || filterRental !== 'all' || searchTerm !== '';
 
-  // --- Helper Functions (Save Settings, Notifications, Sync, etc.) ---
   const handleSaveSettings = () => { 
       if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้นที่แก้ไขตั้งค่าได้', 'error'); return; }
       localStorage.setItem('it_asset_sheet_url', sheetUrl); 
@@ -321,7 +303,6 @@ export default function App() {
   const lookupEmployee = (id) => { const safeId = sanitizeInput(id); const emp = employees.find(e => e.id.toLowerCase() === safeId.toLowerCase()); if (emp) setAssignModal(prev => ({ ...prev, empId: emp.id, empName: emp.name, empNickname: emp.nickname, empPosition: emp.position, empDept: emp.department, empStatus: emp.status })); else showNotification('ไม่พบรหัสพนักงาน', 'error'); };
   const logActivity = async (action, assetData, details = '') => { if (!user) return; try { await addDoc(collection(db, LOGS_COLLECTION_NAME), { assetId: assetData.id, assetName: assetData.name, serialNumber: assetData.serialNumber, action: action, details: details, performedBy: user.email, timestamp: serverTimestamp() }); } catch (error) { console.error("Error logging activity:", error); } };
   
-  // --- Action Handlers ---
   const handleAddAsset = async (e) => { e.preventDefault(); if (!isAdmin) return; try { const safeData = { ...newAsset, category: newAsset.category || (currentViewCategory || 'laptop'), name: sanitizeInput(newAsset.name), brand: sanitizeInput(newAsset.brand), serialNumber: sanitizeInput(newAsset.serialNumber), notes: sanitizeInput(newAsset.notes), phoneNumber: sanitizeInput(newAsset.phoneNumber), status: 'available', createdAt: serverTimestamp() }; await addDoc(collection(db, COLLECTION_NAME), safeData); await logActivity('CREATE', safeData, 'เพิ่มทรัพย์สิน'); setNewAsset({name:'',brand:'',serialNumber:'',category:'laptop',notes:'',isRental:false,phoneNumber:''}); showNotification('เพิ่มสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
   
   const handleAssignSubmit = async (e, type) => { 
@@ -401,6 +382,8 @@ export default function App() {
             {isAdmin && (<div className="pt-4 pb-2"><p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Admin Tools</p>
             <Link to="/add" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/add' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><Plus size={18} /> เพิ่มรายการใหม่</Link>
             <Link to="/admin/users" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/users' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><Shield size={18} /> จัดการผู้ใช้ (Users)</Link>
+            {/* ✅ New Link for Global Audit Log */}
+            <Link to="/admin/logs" onClick={() => window.innerWidth<1024 && setIsSidebarOpen(false)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/admin/logs' ? `bg-emerald-50 text-emerald-700` : 'text-slate-600 hover:bg-slate-50'}`}><History size={18} /> บันทึกกิจกรรมรวม (Logs)</Link>
             <button onClick={() => setShowDeletedLog(true)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"><Trash2 size={18} /> ประวัติการลบ</button></div>)}
         </div>
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 min-w-[256px]"><div className="flex items-center gap-3 mb-3"><div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">{user.email.substring(0,2).toUpperCase()}</div><div className="flex-1 min-w-0"><p className="text-sm font-medium text-slate-700 truncate">{user.email}</p><p className="text-[10px] text-slate-500 uppercase">{isAdmin ? 'Administrator' : 'Viewer'}</p></div></div><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-white hover:text-red-600 hover:border-red-200 transition-all"><LogOut size={14} /> ออกจากระบบ</button></div>
@@ -560,6 +543,8 @@ export default function App() {
             <Route path="/add" element={isAdmin ? <><Header title="Add New Asset" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><AddAssetView /></div></> : <Navigate to="/dashboard" replace />} />
             {/* ✅ New Route for User Management */}
             <Route path="/admin/users" element={isAdmin ? <><Header title="User Management" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><UserManagement db={db} currentUser={user} /></div></> : <Navigate to="/dashboard" replace />} />
+            {/* ✅ New Route for Global Logs */}
+            <Route path="/admin/logs" element={isAdmin ? <><Header title="Global Audit Log" /><div className="flex-1 overflow-y-auto p-4 lg:p-8"><GlobalLog db={db} isAdmin={isAdmin} /></div></> : <Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
