@@ -83,7 +83,7 @@ export default function App() {
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   const sanitizeInput = (input) => {
-    if (input === null || input === undefined) return ''; // ✅ ป้องกัน undefined/null
+    if (input === null || input === undefined) return ''; 
     if (typeof input !== 'string') return input;
     let safe = input.trim();
     if (safe.startsWith('=') || safe.startsWith('+') || safe.startsWith('-') || safe.startsWith('@')) {
@@ -251,17 +251,48 @@ export default function App() {
   };
   const handleLogout = async () => { try { await signOut(auth); } catch (error) { console.error("Logout Error:", error); } };
   const showNotification = (message, type = 'success') => { setNotification({ message, type }); setTimeout(() => setNotification(null), 3000); };
-  const fetchEmployeesFromSheet = async (url) => { if(!url) return; setIsSyncing(true); try { const res = await fetch(url); if (!res.ok) throw new Error(); setEmployees(parseCSV(await res.text())); } catch (e) { console.error(e); } finally { setIsSyncing(false); } };
+  
+  // ✅ FIX: ฟังก์ชันดึงข้อมูลแบบไม่จำ Cache (บังคับโหลดใหม่ 100%)
+  const fetchWithNoCache = async (url) => {
+      const separator = url.includes('?') ? '&' : '?';
+      // เพิ่ม timestamp และตัวเลขสุ่ม เพื่อให้ URL ไม่ซ้ำกันเลยในแต่ละครั้ง
+      const uniqueUrl = `${url}${separator}t=${Date.now()}&r=${Math.random()}`;
+      return fetch(uniqueUrl, { 
+          cache: "no-store", 
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } 
+      });
+  };
+
+  const fetchEmployeesFromSheet = async (url) => { 
+    if(!url) return; 
+    setIsSyncing(true); 
+    try { 
+      const res = await fetchWithNoCache(url); // ✅ ใช้ฟังก์ชันใหม่
+      if (!res.ok) throw new Error(); 
+      setEmployees(parseCSV(await res.text())); 
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      setIsSyncing(false); 
+    } 
+  };
   
   const handleSyncLaptops = async () => {
     if (!isAdmin) { showNotification('เฉพาะ Admin เท่านั้น', 'error'); return; }
     if (!laptopSheetUrl) return;
     setIsSyncingLaptops(true);
     try {
-        const res = await fetch(laptopSheetUrl); if (!res.ok) throw new Error("Fetch failed");
+        const res = await fetchWithNoCache(laptopSheetUrl); // ✅ ใช้ฟังก์ชันใหม่
+        if (!res.ok) throw new Error("Fetch failed");
         const text = await res.text(); const laptopData = parseLaptopCSV(text);
-        await performBatchSync(laptopData); showNotification(`Sync Laptop เสร็จสิ้น`);
-    } catch (error) { showNotification('เกิดข้อผิดพลาดในการ Sync Laptop', 'error'); } finally { setIsSyncingLaptops(false); }
+        await performBatchSync(laptopData); 
+        showNotification(`Sync Laptop เสร็จสิ้น`);
+    } catch (error) { 
+        console.error(error);
+        showNotification('เกิดข้อผิดพลาดในการ Sync Laptop', 'error'); 
+    } finally { 
+        setIsSyncingLaptops(false); 
+    }
   };
 
   const handleSyncMobiles = async () => {
@@ -269,16 +300,30 @@ export default function App() {
     if (!mobileSheetUrl) return;
     setIsSyncingMobiles(true);
     try {
-        const res = await fetch(mobileSheetUrl); if (!res.ok) throw new Error("Fetch failed");
+        const res = await fetchWithNoCache(mobileSheetUrl); // ✅ ใช้ฟังก์ชันใหม่
+        if (!res.ok) throw new Error("Fetch failed");
         const text = await res.text(); const mobileData = parseMobileCSV(text);
-        await performBatchSync(mobileData); showNotification(`Sync Mobile เสร็จสิ้น`);
-    } catch (error) { showNotification('เกิดข้อผิดพลาดในการ Sync Mobile', 'error'); } finally { setIsSyncingMobiles(false); }
+        await performBatchSync(mobileData); 
+        showNotification(`Sync Mobile เสร็จสิ้น`);
+    } catch (error) { 
+        console.error(error);
+        showNotification('เกิดข้อผิดพลาดในการ Sync Mobile', 'error'); 
+    } finally { 
+        setIsSyncingMobiles(false); 
+    }
   };
 
   const performBatchSync = async (dataList) => { 
-      const batch = writeBatch(db);
-      const existingAssetsMap = new Map(assets.map(a => [a.serialNumber, a]));
-      let operationCount = 0; const BATCH_LIMIT = 450;
+      let batch = writeBatch(db);
+      
+      const existingAssetsMap = new Map(assets.map(a => [
+          a.serialNumber ? a.serialNumber.trim().toLowerCase() : '', 
+          a
+      ]));
+      
+      let operationCount = 0; 
+      const BATCH_LIMIT = 450;
+      
       for (const item of dataList) {
           let assigneeInfo = { assignedTo: null, department: null, position: null, assignedDate: null };
           if (item.employeeId) {
@@ -286,11 +331,24 @@ export default function App() {
               if (emp) assigneeInfo = { assignedTo: `${emp.name} (${emp.nickname})`, employeeId: emp.id, department: emp.department, position: emp.position, assignedDate: new Date().toISOString() };
               else assigneeInfo = { assignedTo: `Unknown (ID: ${item.employeeId})`, employeeId: item.employeeId, assignedDate: new Date().toISOString() };
           } else if (item.isCentral && item.location) { assigneeInfo = { assignedTo: `Central - ${item.location}`, employeeId: null, department: null, position: null, assignedDate: new Date().toISOString() }; }
+          
           const dataToSave = { ...item, ...assigneeInfo, isCentral: item.isCentral || false, location: item.location || '', phoneNumber: item.phoneNumber || '' };
-          if (existingAssetsMap.has(item.serialNumber)) batch.update(doc(db, COLLECTION_NAME, existingAssetsMap.get(item.serialNumber).id), dataToSave);
-          else batch.set(doc(collection(db, COLLECTION_NAME)), { ...dataToSave, createdAt: serverTimestamp() });
+          
+          const itemSn = item.serialNumber ? item.serialNumber.trim().toLowerCase() : '';
+
+          if (existingAssetsMap.has(itemSn)) {
+              const existingAsset = existingAssetsMap.get(itemSn);
+              batch.update(doc(db, COLLECTION_NAME, existingAsset.id), dataToSave);
+          } else {
+              batch.set(doc(collection(db, COLLECTION_NAME)), { ...dataToSave, createdAt: serverTimestamp() });
+          }
+          
           operationCount++;
-          if (operationCount >= BATCH_LIMIT) { await batch.commit(); operationCount = 0; }
+          if (operationCount >= BATCH_LIMIT) { 
+              await batch.commit(); 
+              batch = writeBatch(db);
+              operationCount = 0; 
+          }
       }
       if (operationCount > 0) await batch.commit();
   };
@@ -306,7 +364,10 @@ export default function App() {
     try {
         const assetsToSync = assets.filter(a => a.category === categoryToSync);
         const payload = { assets: assetsToSync.map(a => ({ id: a.id, name: a.name || '', brand: a.brand || '', serialNumber: a.serialNumber || '', category: a.category || '', status: Object.values(STATUSES).find(s => s.id === a.status)?.label || a.status || '', assignedTo: a.assignedTo || '', employeeId: a.employeeId || '', department: a.department || '', position: a.position || '', isRental: !!a.isRental, isCentral: !!a.isCentral, location: a.location || '', notes: a.notes || '', phoneNumber: a.phoneNumber || '' })) };
-        const cleanUrl = targetUrl.trim(); const finalUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        
+        const cleanUrl = targetUrl.trim(); 
+        const finalUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}&r=${Math.random()}`;
+        
         await fetch(finalUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
         showNotification(`ส่งข้อมูล ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
     } catch (error) { showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล', 'error'); } finally { setIsSyncingSheet(false); }
@@ -395,7 +456,6 @@ export default function App() {
     } catch (e) { showNotification('เกิดข้อผิดพลาด หรืออุปกรณ์ถูกเบิกไปแล้ว', 'error'); }
   };
 
-  // ✅ ปรับปรุง handleEditSubmit: เพิ่ม try-catch, loading, และตรวจสอบความถูกต้องของข้อมูล
   const handleEditSubmit = async (e) => { 
     e.preventDefault(); 
     if(!isAdmin) return; 
@@ -405,8 +465,6 @@ export default function App() {
     try { 
       const assetRef = doc(db, COLLECTION_NAME, editModal.asset.id);
       
-      // ✅ FIX: ป้องกันค่า undefined หลุดไป Firestore (จะทำให้ Crash)
-      // ใช้ || '' เพื่อให้แน่ใจว่าค่าเป็น string เสมอ
       const updateData = { 
         ...editModal.asset, 
         name: sanitizeInput(editModal.asset.name) || '', 
@@ -415,15 +473,13 @@ export default function App() {
         notes: sanitizeInput(editModal.asset.notes) || '', 
         location: sanitizeInput(editModal.asset.location) || '', 
         phoneNumber: sanitizeInput(editModal.asset.phoneNumber) || '',
-        status: editModal.asset.status || 'available', // ต้องมีค่าเสมอ
+        status: editModal.asset.status || 'available', 
         isRental: editModal.asset.isRental || false,
         isCentral: editModal.asset.isCentral || false
       };
 
-      // 1. อัปเดตข้อมูลทรัพย์สิน
       await updateDoc(assetRef, updateData); 
       
-      // 2. บันทึก Log การแก้ไข
       await logActivity('EDIT', updateData, `แก้ไขข้อมูลทรัพย์สิน`); 
       
       setEditModal({ open: false, asset: null }); 
@@ -471,7 +527,6 @@ export default function App() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div><span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span></div></div>;
   if (!user) return <Login message={loginError} />;
 
-  // --- Shared Render Functions ---
   const renderSidebar = () => (
     <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-r-0'} lg:static`}>
         <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-100 bg-white shrink-0 min-w-[256px]">
