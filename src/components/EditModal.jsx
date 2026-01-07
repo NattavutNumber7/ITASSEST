@@ -1,7 +1,7 @@
-import { Pencil, Smartphone } from 'lucide-react';
+import { Pencil, Smartphone, Loader2 } from 'lucide-react';
 import { STATUSES, COLORS } from '../config.jsx';
 
-const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
+const EditModal = ({ show, onClose, onSubmit, data, setData, isSubmitting }) => {
   if (!show || !data) return null;
 
   // เช็คว่าเป็นหมวด Mobile หรือมีเบอร์โทรอยู่แล้วหรือไม่
@@ -9,7 +9,7 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-fade-in">
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><Pencil size={20} style={{color: COLORS.primary}}/> แก้ไขข้อมูลทรัพย์สิน</h3>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -112,8 +112,22 @@ const EditModal = ({ show, onClose, onSubmit, data, setData }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">ยกเลิก</button>
-            <button type="submit" className="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors shadow-sm" style={{backgroundColor: COLORS.primary}}>บันทึกการแก้ไข</button>
+            <button 
+              type="button" 
+              onClick={onClose} 
+              disabled={isSubmitting}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
+            >
+              ยกเลิก
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors shadow-sm flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed" 
+              style={{backgroundColor: COLORS.primary}}
+            >
+              {isSubmitting ? <><Loader2 className="animate-spin" size={16}/> กำลังบันทึก...</> : 'บันทึกการแก้ไข'}
+            </button>
           </div>
         </form>
       </div>

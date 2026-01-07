@@ -39,6 +39,7 @@ export default function App() {
 
   const [assets, setAssets] = useState([]); 
   const [loading, setLoading] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +83,7 @@ export default function App() {
   const [bulkEditModal, setBulkEditModal] = useState({ open: false }); 
 
   const sanitizeInput = (input) => {
+    if (input === null || input === undefined) return ''; // ✅ ป้องกัน undefined/null
     if (typeof input !== 'string') return input;
     let safe = input.trim();
     if (safe.startsWith('=') || safe.startsWith('+') || safe.startsWith('-') || safe.startsWith('@')) {
@@ -194,7 +196,6 @@ export default function App() {
 
   const currentViewCategory = getCurrentCategory();
 
-  // ✅ แก้ไข: สร้างตัวแปร assetsForFilter ที่กรองตามหมวดหมู่ปัจจุบันก่อนนำไปสร้างตัวเลือก
   const assetsForFilter = useMemo(() => {
     if (currentViewCategory) {
       return assets.filter(a => a.category === currentViewCategory);
@@ -296,8 +297,9 @@ export default function App() {
 
   const handleSyncToSheet = async () => {
     let targetUrl = ''; let categoryToSync = ''; let typeLabel = '';
+    const view = currentViewCategory; 
     if (view === 'mobile') { targetUrl = mobileExportUrl; categoryToSync = 'mobile'; typeLabel = 'Mobile'; } 
-    else if (view === 'laptop' || view === 'dashboard' || view === 'list') { targetUrl = exportUrl; categoryToSync = 'laptop'; typeLabel = 'Laptop'; } 
+    else if (view === 'laptop' || view === 'dashboard' || !view) { targetUrl = exportUrl; categoryToSync = 'laptop'; typeLabel = 'Laptop'; } 
     else { showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error'); return; }
     if (!targetUrl) { showNotification(`กรุณาตั้งค่า URL สำหรับ ${typeLabel} ในหน้าตั้งค่าก่อน`, 'error'); setShowSettings(true); return; }
     setIsSyncingSheet(true);
@@ -311,9 +313,66 @@ export default function App() {
   };
 
   const lookupEmployee = (id) => { const safeId = sanitizeInput(id); const emp = employees.find(e => e.id.toLowerCase() === safeId.toLowerCase()); if (emp) setAssignModal(prev => ({ ...prev, empId: emp.id, empName: emp.name, empNickname: emp.nickname, empPosition: emp.position, empDept: emp.department, empStatus: emp.status })); else showNotification('ไม่พบรหัสพนักงาน', 'error'); };
-  const logActivity = async (action, assetData, details = '') => { if (!user) return; try { await addDoc(collection(db, LOGS_COLLECTION_NAME), { assetId: assetData.id, assetName: assetData.name, serialNumber: assetData.serialNumber, action: action, details: details, performedBy: user.email, timestamp: serverTimestamp() }); } catch (error) { console.error("Error logging activity:", error); } };
   
-  const handleAddAsset = async (e) => { e.preventDefault(); if (!isAdmin) return; try { const safeData = { ...newAsset, category: newAsset.category || (currentViewCategory || 'laptop'), name: sanitizeInput(newAsset.name), brand: sanitizeInput(newAsset.brand), serialNumber: sanitizeInput(newAsset.serialNumber), notes: sanitizeInput(newAsset.notes), phoneNumber: sanitizeInput(newAsset.phoneNumber), status: 'available', createdAt: serverTimestamp() }; await addDoc(collection(db, COLLECTION_NAME), safeData); await logActivity('CREATE', safeData, 'เพิ่มทรัพย์สิน'); setNewAsset({name:'',brand:'',serialNumber:'',category:'laptop',notes:'',isRental:false,phoneNumber:''}); showNotification('เพิ่มสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
+  const logActivity = async (action, assetData, details = '') => { 
+    if (!user) return; 
+    try { 
+      await addDoc(collection(db, LOGS_COLLECTION_NAME), { 
+        assetId: assetData.id || '', 
+        assetName: assetData.name || '', 
+        serialNumber: assetData.serialNumber || '', 
+        action: action, 
+        details: details, 
+        performedBy: user.email, 
+        timestamp: serverTimestamp() 
+      }); 
+    } catch (error) { 
+      console.error("Error logging activity:", error); 
+    } 
+  };
+  
+  const handleAddAsset = async (e) => { 
+    e.preventDefault(); 
+    if (!isAdmin) return; 
+    
+    setIsSubmitting(true);
+
+    try { 
+      const safeData = { 
+        ...newAsset, 
+        category: newAsset.category || (currentViewCategory || 'laptop'), 
+        name: sanitizeInput(newAsset.name), 
+        brand: sanitizeInput(newAsset.brand), 
+        serialNumber: sanitizeInput(newAsset.serialNumber), 
+        notes: sanitizeInput(newAsset.notes), 
+        phoneNumber: sanitizeInput(newAsset.phoneNumber), 
+        status: 'available', 
+        createdAt: serverTimestamp() 
+      }; 
+      
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), safeData); 
+      
+      await logActivity('CREATE', { ...safeData, id: docRef.id }, 'เพิ่มทรัพย์สิน'); 
+      
+      setNewAsset({
+        name:'',
+        brand:'',
+        serialNumber:'',
+        category:'laptop',
+        notes:'',
+        isRental:false,
+        phoneNumber:''
+      }); 
+      
+      showNotification('เพิ่มสำเร็จ'); 
+    } catch (error) { 
+      console.error("Add Asset Error:", error); 
+      alert(`บันทึกไม่สำเร็จ: ${error.message}`); 
+      showNotification('Failed to add asset', 'error'); 
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   
   const handleAssignSubmit = async (e, type) => { 
     e.preventDefault(); if (!isAdmin) { showNotification('Access Denied', 'error'); return; }
@@ -336,7 +395,47 @@ export default function App() {
     } catch (e) { showNotification('เกิดข้อผิดพลาด หรืออุปกรณ์ถูกเบิกไปแล้ว', 'error'); }
   };
 
-  const handleEditSubmit = async (e) => { e.preventDefault(); if(!isAdmin) return; try { await updateDoc(doc(db, COLLECTION_NAME, editModal.asset.id), { ...editModal.asset, name: sanitizeInput(editModal.asset.name), brand: sanitizeInput(editModal.asset.brand), serialNumber: sanitizeInput(editModal.asset.serialNumber), notes: sanitizeInput(editModal.asset.notes), location: sanitizeInput(editModal.asset.location), phoneNumber: sanitizeInput(editModal.asset.phoneNumber) }); await logActivity('EDIT', editModal.asset, `แก้ไขข้อมูลทรัพย์สิน`); setEditModal({ open: false, asset: null }); showNotification('แก้ไขสำเร็จ'); } catch { showNotification('Failed', 'error'); } };
+  // ✅ ปรับปรุง handleEditSubmit: เพิ่ม try-catch, loading, และตรวจสอบความถูกต้องของข้อมูล
+  const handleEditSubmit = async (e) => { 
+    e.preventDefault(); 
+    if(!isAdmin) return; 
+    
+    setIsSubmitting(true);
+
+    try { 
+      const assetRef = doc(db, COLLECTION_NAME, editModal.asset.id);
+      
+      // ✅ FIX: ป้องกันค่า undefined หลุดไป Firestore (จะทำให้ Crash)
+      // ใช้ || '' เพื่อให้แน่ใจว่าค่าเป็น string เสมอ
+      const updateData = { 
+        ...editModal.asset, 
+        name: sanitizeInput(editModal.asset.name) || '', 
+        brand: sanitizeInput(editModal.asset.brand) || '', 
+        serialNumber: sanitizeInput(editModal.asset.serialNumber) || '', 
+        notes: sanitizeInput(editModal.asset.notes) || '', 
+        location: sanitizeInput(editModal.asset.location) || '', 
+        phoneNumber: sanitizeInput(editModal.asset.phoneNumber) || '',
+        status: editModal.asset.status || 'available', // ต้องมีค่าเสมอ
+        isRental: editModal.asset.isRental || false,
+        isCentral: editModal.asset.isCentral || false
+      };
+
+      // 1. อัปเดตข้อมูลทรัพย์สิน
+      await updateDoc(assetRef, updateData); 
+      
+      // 2. บันทึก Log การแก้ไข
+      await logActivity('EDIT', updateData, `แก้ไขข้อมูลทรัพย์สิน`); 
+      
+      setEditModal({ open: false, asset: null }); 
+      showNotification('แก้ไขสำเร็จ'); 
+    } catch (error) { 
+      console.error("Edit Asset Error:", error);
+      alert(`แก้ไขไม่สำเร็จ: ${error.message}`);
+      showNotification('Failed to edit asset', 'error'); 
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   
   const handleReturnSubmit = async (cond, status) => { 
       const { asset, type } = returnModal; if (!asset || !isAdmin) return;
@@ -372,7 +471,7 @@ export default function App() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: COLORS.background, color: COLORS.primary}}><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor: COLORS.primary}}></div><span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span></div></div>;
   if (!user) return <Login message={loginError} />;
 
-  // --- Shared Render Functions (Fix for focus loss) ---
+  // --- Shared Render Functions ---
   const renderSidebar = () => (
     <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-r-0'} lg:static`}>
         <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-100 bg-white shrink-0 min-w-[256px]">
@@ -536,7 +635,21 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium mb-1 text-slate-700">{newAsset.category === 'mobile' ? 'รุ่น (Model)' : 'ชื่อทรัพย์สิน'}</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" value={newAsset.name} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder={newAsset.category === 'mobile' ? "เช่น iPhone 15" : "เช่น MacBook Pro 14"} /></div><div><label className="block text-sm font-medium mb-1 text-slate-700">ยี่ห้อ (Brand)</label><input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="Brand" /></div></div>
           <div className="grid grid-cols-1 gap-4"><div><label className="block text-sm font-medium mb-1 text-slate-700">{newAsset.category === 'mobile' ? 'IMEI / Serial Number' : 'Serial Number'}</label><input type="text" required className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" value={newAsset.serialNumber} onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})} placeholder="S/N" /></div>{newAsset.category === 'mobile' && (<div className="animate-fade-in"><label className="block text-sm font-medium mb-1 text-slate-700 flex items-center gap-1"><Smartphone size={14}/> เบอร์โทรศัพท์ (Phone No)</label><input type="text" className="w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none transition-all" value={newAsset.phoneNumber} onChange={e => setNewAsset({...newAsset, phoneNumber: e.target.value})} placeholder="0XX-XXX-XXXX" /></div>)}</div>
           <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100"><input type="checkbox" id="isRental" className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" checked={newAsset.isRental} onChange={e => setNewAsset({...newAsset, isRental: e.target.checked})}/> <label htmlFor="isRental" className="text-sm cursor-pointer select-none text-slate-700 font-medium">เป็นเครื่องเช่า (Rental)</label></div>
-          <button type="submit" className="w-full text-white py-2.5 rounded-xl hover:opacity-90 transition-all shadow-md font-medium mt-4" style={{backgroundColor: COLORS.primary}}>บันทึกข้อมูล</button>
+          
+          <button 
+            type="submit" 
+            disabled={isSubmitting} // ✅ ป้องกันกดซ้ำ
+            className="w-full text-white py-2.5 rounded-xl hover:opacity-90 transition-all shadow-md font-medium mt-4 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed" 
+            style={{backgroundColor: COLORS.primary}}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="animate-spin" size={20} /> กำลังบันทึก...
+              </>
+            ) : (
+              'บันทึกข้อมูล'
+            )}
+          </button>
         </form>
     </div>
   );
@@ -563,7 +676,17 @@ export default function App() {
       {/* Modals - Keep them globally accessible */}
       <SettingsModal show={showSettings} onClose={() => setShowSettings(false)} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} laptopSheetUrl={laptopSheetUrl} setLaptopSheetUrl={setLaptopSheetUrl} mobileSheetUrl={mobileSheetUrl} setMobileSheetUrl={setMobileSheetUrl} exportUrl={exportUrl} setExportUrl={setExportUrl} mobileExportUrl={mobileExportUrl} setMobileExportUrl={setMobileExportUrl} onSave={handleSaveSettings} onSyncLaptops={handleSyncLaptops} isSyncing={isSyncing} isSyncingLaptops={isSyncingLaptops} onSyncMobiles={handleSyncMobiles} isSyncingMobiles={isSyncingMobiles} />
       <AssignModal show={assignModal.open} onClose={() => setAssignModal({ ...assignModal, open: false })} onSubmit={handleAssignSubmit} data={assignModal} setData={setAssignModal} onLookup={lookupEmployee} empStatus={assignModal.empStatus} />
-      <EditModal show={editModal.open} onClose={() => setEditModal({ open: false, asset: null })} onSubmit={handleEditSubmit} data={editModal.asset} setData={(val) => setEditModal({ ...editModal, asset: val })} />
+      
+      {/* ✅ ส่ง isSubmitting ไปให้ EditModal */}
+      <EditModal 
+        show={editModal.open} 
+        onClose={() => !isSubmitting && setEditModal({ open: false, asset: null })} 
+        onSubmit={handleEditSubmit} 
+        data={editModal.asset} 
+        setData={(val) => setEditModal({ ...editModal, asset: val })} 
+        isSubmitting={isSubmitting}
+      />
+      
       <HistoryModal show={historyModal.open} onClose={() => setHistoryModal({ open: false, asset: null })} asset={historyModal.asset} db={db} />
       <ReturnModal show={returnModal.open} onClose={() => setReturnModal({ ...returnModal, open: false })} onSubmit={handleReturnSubmit} data={returnModal} />
       <DeleteModal show={deleteModal.open} onClose={() => setDeleteModal({ open: false, asset: null })} onSubmit={handleDeleteSubmit} asset={deleteModal.asset} />
