@@ -359,18 +359,53 @@ export default function App() {
     if (view === 'mobile') { targetUrl = mobileExportUrl; categoryToSync = 'mobile'; typeLabel = 'Mobile'; } 
     else if (view === 'laptop' || view === 'dashboard' || !view) { targetUrl = exportUrl; categoryToSync = 'laptop'; typeLabel = 'Laptop'; } 
     else { showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error'); return; }
+    
     if (!targetUrl) { showNotification(`กรุณาตั้งค่า URL สำหรับ ${typeLabel} ในหน้าตั้งค่าก่อน`, 'error'); setShowSettings(true); return; }
+    
     setIsSyncingSheet(true);
     try {
         const assetsToSync = assets.filter(a => a.category === categoryToSync);
-        const payload = { assets: assetsToSync.map(a => ({ id: a.id, name: a.name || '', brand: a.brand || '', serialNumber: a.serialNumber || '', category: a.category || '', status: Object.values(STATUSES).find(s => s.id === a.status)?.label || a.status || '', assignedTo: a.assignedTo || '', employeeId: a.employeeId || '', department: a.department || '', position: a.position || '', isRental: !!a.isRental, isCentral: !!a.isCentral, location: a.location || '', notes: a.notes || '', phoneNumber: a.phoneNumber || '' })) };
+        
+        // Prepare payload that matches the Apps Script 'doPost' expectation
+        // Script expects keys: id, name, brand, serialNumber, category, status, assignedTo, department, position, isRental, isCentral, location, notes
+        const payload = { 
+            assets: assetsToSync.map(a => ({ 
+                id: a.id, 
+                name: a.name || '', 
+                brand: a.brand || '', 
+                serialNumber: a.serialNumber || '', 
+                category: a.category || '', 
+                status: Object.values(STATUSES).find(s => s.id === a.status)?.label || a.status || '', 
+                assignedTo: a.assignedTo || '', 
+                employeeId: a.employeeId || '', 
+                department: a.department || '', 
+                position: a.position || '', 
+                isRental: !!a.isRental, 
+                isCentral: !!a.isCentral, 
+                location: a.location || '', 
+                notes: a.notes || '', 
+                phoneNumber: a.phoneNumber || ''
+            })) 
+        };
         
         const cleanUrl = targetUrl.trim(); 
-        const finalUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}&r=${Math.random()}`;
         
-        await fetch(finalUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
-        showNotification(`ส่งข้อมูล ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
-    } catch (error) { showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล', 'error'); } finally { setIsSyncingSheet(false); }
+        // Use 'no-cors' mode which is required for Apps Script Web App calls from browser
+        // Use 'text/plain' as content-type to avoid CORS preflight (OPTIONS request) which Apps Script doesn't handle
+        await fetch(cleanUrl, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+            body: JSON.stringify(payload) 
+        });
+        
+        showNotification(`ส่งคำขออัปเดต ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
+    } catch (error) { 
+        console.error('Sync Error:', error);
+        showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + error.message, 'error'); 
+    } finally { 
+        setIsSyncingSheet(false); 
+    }
   };
 
   const lookupEmployee = (id) => { const safeId = sanitizeInput(id); const emp = employees.find(e => e.id.toLowerCase() === safeId.toLowerCase()); if (emp) setAssignModal(prev => ({ ...prev, empId: emp.id, empName: emp.name, empNickname: emp.nickname, empPosition: emp.position, empDept: emp.department, empStatus: emp.status })); else showNotification('ไม่พบรหัสพนักงาน', 'error'); };
