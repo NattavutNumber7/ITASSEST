@@ -252,10 +252,9 @@ export default function App() {
   const handleLogout = async () => { try { await signOut(auth); } catch (error) { console.error("Logout Error:", error); } };
   const showNotification = (message, type = 'success') => { setNotification({ message, type }); setTimeout(() => setNotification(null), 3000); };
   
-  // ✅ FIX: ฟังก์ชันดึงข้อมูลแบบไม่จำ Cache (บังคับโหลดใหม่ 100%)
+  // ✅ FIX: ฟังก์ชันดึงข้อมูลแบบไม่จำ Cache
   const fetchWithNoCache = async (url) => {
       const separator = url.includes('?') ? '&' : '?';
-      // เพิ่ม timestamp และตัวเลขสุ่ม เพื่อให้ URL ไม่ซ้ำกันเลยในแต่ละครั้ง
       const uniqueUrl = `${url}${separator}t=${Date.now()}&r=${Math.random()}`;
       return fetch(uniqueUrl, { 
           cache: "no-store", 
@@ -267,7 +266,7 @@ export default function App() {
     if(!url) return; 
     setIsSyncing(true); 
     try { 
-      const res = await fetchWithNoCache(url); // ✅ ใช้ฟังก์ชันใหม่
+      const res = await fetchWithNoCache(url);
       if (!res.ok) throw new Error(); 
       setEmployees(parseCSV(await res.text())); 
     } catch (e) { 
@@ -282,7 +281,7 @@ export default function App() {
     if (!laptopSheetUrl) return;
     setIsSyncingLaptops(true);
     try {
-        const res = await fetchWithNoCache(laptopSheetUrl); // ✅ ใช้ฟังก์ชันใหม่
+        const res = await fetchWithNoCache(laptopSheetUrl); 
         if (!res.ok) throw new Error("Fetch failed");
         const text = await res.text(); const laptopData = parseLaptopCSV(text);
         await performBatchSync(laptopData); 
@@ -300,7 +299,7 @@ export default function App() {
     if (!mobileSheetUrl) return;
     setIsSyncingMobiles(true);
     try {
-        const res = await fetchWithNoCache(mobileSheetUrl); // ✅ ใช้ฟังก์ชันใหม่
+        const res = await fetchWithNoCache(mobileSheetUrl);
         if (!res.ok) throw new Error("Fetch failed");
         const text = await res.text(); const mobileData = parseMobileCSV(text);
         await performBatchSync(mobileData); 
@@ -353,21 +352,29 @@ export default function App() {
       if (operationCount > 0) await batch.commit();
   };
 
+  // ✅ ฟังก์ชันส่งข้อมูลไปยัง Apps Script (doPost)
   const handleSyncToSheet = async () => {
     let targetUrl = ''; let categoryToSync = ''; let typeLabel = '';
     const view = currentViewCategory; 
+    
     if (view === 'mobile') { targetUrl = mobileExportUrl; categoryToSync = 'mobile'; typeLabel = 'Mobile'; } 
     else if (view === 'laptop' || view === 'dashboard' || !view) { targetUrl = exportUrl; categoryToSync = 'laptop'; typeLabel = 'Laptop'; } 
     else { showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error'); return; }
     
     if (!targetUrl) { showNotification(`กรุณาตั้งค่า URL สำหรับ ${typeLabel} ในหน้าตั้งค่าก่อน`, 'error'); setShowSettings(true); return; }
     
+    const cleanUrl = targetUrl.trim();
+    // ⚠️ เช็ค URL ว่าถูกต้องหรือไม่ (ต้องลงท้ายด้วย /exec)
+    if (!cleanUrl.includes('script.google.com') || !cleanUrl.endsWith('/exec')) {
+        alert('⚠️ URL ของ Apps Script ดูไม่ถูกต้อง\nต้องขึ้นต้นด้วย https://script.google.com/...\nและต้องลงท้ายด้วย /exec เท่านั้น (ไม่ใช่ /dev หรือ /edit)');
+        return;
+    }
+
     setIsSyncingSheet(true);
     try {
         const assetsToSync = assets.filter(a => a.category === categoryToSync);
         
-        // Prepare payload that matches the Apps Script 'doPost' expectation
-        // Script expects keys: id, name, brand, serialNumber, category, status, assignedTo, department, position, isRental, isCentral, location, notes
+        // เตรียม Payload ให้ตรงกับที่ Apps Script (doPost) ต้องการ
         const payload = { 
             assets: assetsToSync.map(a => ({ 
                 id: a.id, 
@@ -388,18 +395,19 @@ export default function App() {
             })) 
         };
         
-        const cleanUrl = targetUrl.trim(); 
+        console.log(`[Sync] Sending ${assetsToSync.length} items to: ${cleanUrl}`);
         
-        // Use 'no-cors' mode which is required for Apps Script Web App calls from browser
-        // Use 'text/plain' as content-type to avoid CORS preflight (OPTIONS request) which Apps Script doesn't handle
+        // ส่ง POST request แบบ no-cors (เพื่อเลี่ยง Preflight)
+        // Apps Script จะรับข้อมูลผ่าน e.postData.contents
         await fetch(cleanUrl, { 
             method: 'POST', 
             mode: 'no-cors', 
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+            headers: { 'Content-Type': 'text/plain' }, // ใช้ text/plain เพื่อความชัวร์
             body: JSON.stringify(payload) 
         });
         
         showNotification(`ส่งคำขออัปเดต ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
+        
     } catch (error) { 
         console.error('Sync Error:', error);
         showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + error.message, 'error'); 
