@@ -352,30 +352,28 @@ export default function App() {
       if (operationCount > 0) await batch.commit();
   };
 
-  // ✅ ฟังก์ชันส่งข้อมูลไปยัง Apps Script (doPost)
+  // ✅ ฟังก์ชันส่งข้อมูลไปยัง Apps Script (doPost) - ปรับปรุงใหม่
   const handleSyncToSheet = async () => {
-    let targetUrl = ''; let categoryToSync = ''; let typeLabel = '';
     const view = currentViewCategory; 
     
-    if (view === 'mobile') { targetUrl = mobileExportUrl; categoryToSync = 'mobile'; typeLabel = 'Mobile'; } 
-    else if (view === 'laptop' || view === 'dashboard' || !view) { targetUrl = exportUrl; categoryToSync = 'laptop'; typeLabel = 'Laptop'; } 
-    else { showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error'); return; }
-    
-    if (!targetUrl) { showNotification(`กรุณาตั้งค่า URL สำหรับ ${typeLabel} ในหน้าตั้งค่าก่อน`, 'error'); setShowSettings(true); return; }
-    
-    const cleanUrl = targetUrl.trim();
-    // ⚠️ เช็ค URL ว่าถูกต้องหรือไม่ (ต้องลงท้ายด้วย /exec)
-    if (!cleanUrl.includes('script.google.com') || !cleanUrl.endsWith('/exec')) {
-        alert('⚠️ URL ของ Apps Script ดูไม่ถูกต้อง\nต้องขึ้นต้นด้วย https://script.google.com/...\nและต้องลงท้ายด้วย /exec เท่านั้น (ไม่ใช่ /dev หรือ /edit)');
-        return;
-    }
-
-    setIsSyncingSheet(true);
-    try {
-        const assetsToSync = assets.filter(a => a.category === categoryToSync);
+    // ฟังก์ชันย่อยสำหรับส่งข้อมูล
+    const sendData = async (url, category, label) => {
+        if (!url) return { success: false, message: `ยังไม่ตั้งค่า URL สำหรับ ${label}` };
         
-        // เตรียม Payload ให้ตรงกับที่ Apps Script (doPost) ต้องการ
+        const cleanUrl = url.trim();
+        // Validation: ต้องเป็น exec URL
+        if (!cleanUrl.includes('script.google.com') || !cleanUrl.endsWith('/exec')) {
+            return { success: false, message: `URL ของ ${label} ผิดพลาด (ต้องลงท้ายด้วย /exec)` };
+        }
+
+        const assetsToSync = assets.filter(a => a.category === category);
+        
+        if (assetsToSync.length === 0) {
+            return { success: true, message: `ไม่มีข้อมูล ${label} ให้ส่ง`, count: 0 };
+        }
+
         const payload = { 
+            timestamp: new Date().toISOString(), // เพิ่มเวลาไปใน Body
             assets: assetsToSync.map(a => ({ 
                 id: a.id, 
                 name: a.name || '', 
@@ -395,22 +393,65 @@ export default function App() {
             })) 
         };
         
-        console.log(`[Sync] Sending ${assetsToSync.length} items to: ${cleanUrl}`);
+        // Debug: ดูข้อมูลที่จะส่ง
+        console.log(`[Sync ${label}] Payload Preview:`, payload);
+
+        const postUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
         
-        // ส่ง POST request แบบ no-cors (เพื่อเลี่ยง Preflight)
-        // Apps Script จะรับข้อมูลผ่าน e.postData.contents
-        await fetch(cleanUrl, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            headers: { 'Content-Type': 'text/plain' }, // ใช้ text/plain เพื่อความชัวร์
-            body: JSON.stringify(payload) 
-        });
+        try {
+            await fetch(postUrl, { 
+                method: 'POST', 
+                mode: 'no-cors', // สำคัญมากสำหรับ GAS
+                redirect: 'follow', // ให้ตาม Redirect ของ Google
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // ระบุ charset ชัดเจน
+                body: JSON.stringify(payload) 
+            });
+            return { success: true, message: `ส่ง ${label} (${assetsToSync.length} รายการ) เรียบร้อย`, count: assetsToSync.length };
+        } catch (error) {
+            console.error(`Sync ${label} Failed:`, error);
+            return { success: false, message: `ส่ง ${label} ล้มเหลว: ${error.message}` };
+        }
+    };
+
+    setIsSyncingSheet(true);
+    try {
+        let results = [];
+
+        // Logic เลือกส่งตามหน้าจอ
+        if (view === 'mobile') { 
+             results.push(await sendData(mobileExportUrl, 'mobile', 'Mobile'));
+        } else if (view === 'laptop') { 
+             results.push(await sendData(exportUrl, 'laptop', 'Laptop')); 
+        } else if (view === 'dashboard' || !view) { 
+             // ถ้าอยู่ Dashboard ให้ส่งทั้งคู่ที่มี URL
+             if (exportUrl) results.push(await sendData(exportUrl, 'laptop', 'Laptop'));
+             if (mobileExportUrl) results.push(await sendData(mobileExportUrl, 'mobile', 'Mobile'));
+             
+             if (!exportUrl && !mobileExportUrl) {
+                 showNotification('ไม่พบ URL สำหรับส่งข้อมูล (ตั้งค่าที่ปุ่มเฟือง)', 'error');
+                 setIsSyncingSheet(false);
+                 return;
+             }
+        } else { 
+             showNotification(`ยังไม่รองรับการ Update Sheet สำหรับหมวด ${view}`, 'error'); 
+             setIsSyncingSheet(false);
+             return; 
+        }
         
-        showNotification(`ส่งคำขออัปเดต ${typeLabel} (${assetsToSync.length} รายการ) ไปยัง Sheet แล้ว`);
-        
+        // สรุปผล
+        const errors = results.filter(r => !r.success);
+        const successes = results.filter(r => r.success && r.count > 0);
+
+        if (errors.length > 0) {
+            showNotification(`พบข้อผิดพลาด: ${errors.map(e => e.message).join(', ')}`, 'error');
+        } else if (successes.length > 0) {
+            showNotification(`อัปเดตสำเร็จ: ${successes.map(s => s.message).join(', ')}`);
+        } else {
+            showNotification('ไม่มีข้อมูลใหม่ให้ส่ง หรือ URL ไม่ถูกต้อง', 'warning');
+        }
+
     } catch (error) { 
-        console.error('Sync Error:', error);
-        showNotification('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + error.message, 'error'); 
+        showNotification('System Error: ' + error.message, 'error'); 
     } finally { 
         setIsSyncingSheet(false); 
     }
